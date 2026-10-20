@@ -1,0 +1,45 @@
+/* Base styling consuming tokens strictly */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-ui);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Tabular figures for telemetry, timestamps, code lines, streaks */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Syntax token styling mapped to --code-* tokens */
+.tok-kw { color: var(--code-kw); font-weight: 600; }
+.tok-fn { color: var(--code-fn); font-weight: 500; }
+.tok-num { color: var(--code-num); }
+.tok-str { color: var(--code-str); }
+.tok-tag { color: var(--code-tag); font-weight: 500; }
+.tok-attr { color: var(--code-attr); }
+.tok-comment { color: var(--code-comment); font-style: italic; }
+.tok-punc { color: var(--code-punc); }
+.tok-plain { color: var(--code-text); }
+
+/* Selection */
+::selection {
+  background-color: var(--color-accent-weak);
+  color: var(--color-text);
+}
+
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

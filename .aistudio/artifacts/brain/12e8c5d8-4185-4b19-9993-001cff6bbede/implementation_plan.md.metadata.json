@@ -1,0 +1,6 @@
+{
+  "summary": "Implementation plan for Nabbit: a developer training platform for bug-hunt code review drills on curated video concepts with spaced-recall resurfacing. Details the design tokens architecture, synchronized video player side-by-side challenge view, deterministic MCQ grading, and time-travel spaced repetition dashboard.",
+  "updatedAt": "2026-10-20T08:59:49.214552411Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

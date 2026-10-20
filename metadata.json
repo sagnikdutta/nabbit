@@ -1,0 +1,6 @@
+{
+  "name": "Nabbit — Code Review Drills & Spaced Recall",
+  "description": "Turn dev tutorials into bug-hunt drills that train your code-review judgment with spaced recall resurfacing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
