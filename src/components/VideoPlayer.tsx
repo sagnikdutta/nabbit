@@ -44,8 +44,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             onClick={resetToTimestamp}
             className="flex items-center gap-1 text-[11px] text-[var(--color-muted)] hover:text-[var(--color-text)] px-2 py-0.5 rounded-[var(--radius-sm)] hover:bg-[var(--color-border)] transition-colors cursor-pointer"
             title="Reset video to concept timestamp"
+            aria-label={`Cue video to the concept moment at ${timestampFormatted}`}
           >
-            <RotateCcw className="w-3 h-3" />
+            <RotateCcw className="w-3 h-3" aria-hidden="true" />
             <span className="hidden sm:inline">Cue Moment</span>
           </button>
           <a
@@ -54,8 +55,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             rel="noreferrer"
             className="flex items-center gap-1 text-[11px] text-[var(--color-muted)] hover:text-[var(--color-text)] px-2 py-0.5 rounded-[var(--radius-sm)] hover:bg-[var(--color-border)] transition-colors"
             title="Open in new YouTube tab"
+            aria-label="Watch on YouTube in a new tab"
           >
-            <ExternalLink className="w-3 h-3" />
+            <ExternalLink className="w-3 h-3" aria-hidden="true" />
             <span className="hidden sm:inline">YouTube</span>
           </a>
         </div>

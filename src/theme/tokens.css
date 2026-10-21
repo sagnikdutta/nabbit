@@ -54,6 +54,7 @@
   --code-attr: #ffcb6b;
   --code-comment: #676e95;
   --code-punc: #8b93a7;
+  --code-border: rgba(255, 255, 255, 0.08);
   --code-bug: rgba(239, 68, 68, 0.16);
   --code-bug-border: #ef4444;
   --code-fix: rgba(16, 185, 129, 0.16);
@@ -131,6 +132,7 @@
   --code-attr: #facc15;
   --code-comment: #6b7280;
   --code-punc: #9ca3af;
+  --code-border: rgba(255, 255, 255, 0.06);
   --code-bug: rgba(248, 113, 113, 0.2);
   --code-bug-border: #f87171;
   --code-fix: rgba(16, 185, 129, 0.2);

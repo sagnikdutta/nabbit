@@ -20,7 +20,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-[var(--color-border)] bg-[var(--color-surface)]/90 backdrop-blur-md">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3 sm:gap-8">
         {/* Zone 1: Brand wordmark (single text element) */}
         <button
           onClick={() => onNavigate('library')}
@@ -40,40 +40,49 @@ export const Navbar: React.FC<NavbarProps> = ({
         </button>
 
         {/* Zone 2: Single-line navigation links */}
-        <nav className="flex items-center gap-6 text-sm font-medium">
+        <nav className="flex items-center gap-4 sm:gap-6 text-[13px] sm:text-sm font-medium">
           <button
             onClick={() => onNavigate('library')}
+            aria-current={currentRoute === 'library' ? 'page' : undefined}
             className={`whitespace-nowrap cursor-pointer transition-colors pb-0.5 ${
               currentRoute === 'library'
                 ? 'text-[var(--color-accent)] font-semibold border-b-2 border-[var(--color-accent)]'
                 : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
             }`}
           >
-            Video Library
+            <span className="sm:hidden">Library</span>
+            <span className="hidden sm:inline">Video Library</span>
           </button>
 
           <button
             onClick={() => onNavigate('challenge')}
+            aria-current={currentRoute === 'challenge' || currentRoute === 'reveal' ? 'page' : undefined}
             className={`whitespace-nowrap cursor-pointer transition-colors pb-0.5 ${
               currentRoute === 'challenge' || currentRoute === 'reveal'
                 ? 'text-[var(--color-accent)] font-semibold border-b-2 border-[var(--color-accent)]'
                 : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
             }`}
           >
-            Bug Hunt Drill
+            <span className="sm:hidden">Drills</span>
+            <span className="hidden sm:inline">Bug Hunt Drill</span>
           </button>
 
           <button
             onClick={() => onNavigate('recall')}
+            aria-current={currentRoute === 'recall' ? 'page' : undefined}
             className={`whitespace-nowrap cursor-pointer transition-colors pb-0.5 flex items-center gap-1.5 ${
               currentRoute === 'recall'
                 ? 'text-[var(--color-accent)] font-semibold border-b-2 border-[var(--color-accent)]'
                 : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
             }`}
           >
-            <span>Spaced Recall</span>
+            <span className="sm:hidden">Recall</span>
+            <span className="hidden sm:inline">Spaced Recall</span>
             {dueCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-[var(--color-accent)] text-white">
+              <span
+                className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-[var(--color-accent)] text-white"
+                aria-label={`${dueCount} due for review`}
+              >
                 {dueCount}
               </span>
             )}
@@ -82,9 +91,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Zone 3: 1 primary action / status cluster */}
         <div className="flex items-center gap-3 shrink-0">
-          {/* Streak indicator */}
+          {/* Streak indicator (hidden on mobile — shown in the library strip + dashboard) */}
           <div
-            className="flex items-center gap-1 px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] border border-[var(--color-border)] text-xs font-mono font-medium text-[var(--color-text)] select-none"
+            className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] border border-[var(--color-border)] text-xs font-mono font-medium text-[var(--color-text)] select-none"
             title="Consecutive successful review streak"
           >
             <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />

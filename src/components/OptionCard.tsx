@@ -59,22 +59,32 @@ export const OptionCard: React.FC<OptionCardProps> = ({
       type="button"
       onClick={onClick}
       disabled={disabled}
+      aria-pressed={!isRevealed ? isSelected : undefined}
       className={`w-full text-left p-3.5 rounded-[var(--radius)] border transition-all duration-150 flex items-start gap-3 cursor-pointer disabled:cursor-not-allowed select-none group ${containerStyles}`}
     >
       <div
+        aria-hidden="true"
         className={`w-6 h-6 rounded-[var(--radius-sm)] border text-xs font-mono font-semibold flex items-center justify-center shrink-0 transition-colors ${badgeStyles}`}
       >
         {letter}
       </div>
 
       <div className="flex-1 text-[13.5px] leading-snug font-normal text-[var(--color-text)] pt-0.5">
+        <span className="sr-only">Option {letter}: </span>
         {text}
+        {isRevealed && isCorrect && <span className="sr-only"> — correct answer</span>}
+        {isRevealed && isSelected && !isCorrect && (
+          <span className="sr-only"> — your answer, incorrect</span>
+        )}
       </div>
 
-      {indicator && <div className="pt-0.5">{indicator}</div>}
+      {indicator && <div className="pt-0.5" aria-hidden="true">{indicator}</div>}
 
       {!isRevealed && (
-        <span className="hidden sm:inline-block text-[10px] font-mono text-[var(--color-muted)] opacity-40 group-hover:opacity-100 transition-opacity pt-1">
+        <span
+          aria-hidden="true"
+          className="hidden sm:inline-block text-[10px] font-mono text-[var(--color-muted)] opacity-40 group-hover:opacity-100 transition-opacity pt-1"
+        >
           [{index + 1}]
         </span>
       )}

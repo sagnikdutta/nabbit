@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { Video, Challenge, RecallItem } from '../lib/types';
+import { Video, Challenge, RecallItem, RecallStats } from '../lib/types';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
-import { Play, CheckCircle2, ArrowRight, ShieldCheck, Sparkles, BookOpen } from 'lucide-react';
+import { Play, CheckCircle2, ArrowRight, ShieldCheck, Sparkles, BookOpen, Flame, Clock } from 'lucide-react';
 
 export interface LibraryScreenProps {
   videos: Video[];
   challenges: Challenge[];
   recallItems: RecallItem[];
+  stats: RecallStats;
+  userName?: string;
   onSelectVideo: (videoId: string) => void;
   onSelectChallenge: (challengeId: string) => void;
 }
@@ -16,6 +18,8 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   videos,
   challenges,
   recallItems,
+  stats,
+  userName,
   onSelectVideo,
   onSelectChallenge,
 }) => {
@@ -42,6 +46,12 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <span>·</span>
             <span className="text-[var(--color-accent)] font-semibold">Nabbit MVP</span>
           </div>
+
+          {userName && (
+            <p className="text-sm font-semibold text-[var(--color-accent)]">
+              Welcome back, {userName} 👋
+            </p>
+          )}
 
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--color-text)]">
             Train your code-review judgment on the dev videos you watch.
@@ -70,6 +80,44 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           </div>
         </div>
       </section>
+
+      {/* Returning-user progress strip (adaptive home) */}
+      {recallItems.length > 0 && nextChallenge && (
+        <section className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-5 py-4">
+          <div className="flex items-center gap-5">
+            <div className="flex items-center gap-2">
+              <Flame className="w-4 h-4 text-amber-500 fill-amber-500 shrink-0" />
+              <div className="leading-tight">
+                <div className="text-sm font-bold text-[var(--color-text)] tabular-nums">
+                  {stats.currentStreak}
+                </div>
+                <div className="text-[11px] text-[var(--color-muted)] font-mono">day streak</div>
+              </div>
+            </div>
+
+            <div className="w-px h-8 bg-[var(--color-border)]" />
+
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-[var(--color-accent)] shrink-0" />
+              <div className="leading-tight">
+                <div className="text-sm font-bold text-[var(--color-text)] tabular-nums">
+                  {stats.dueCount}
+                </div>
+                <div className="text-[11px] text-[var(--color-muted)] font-mono">due for review</div>
+              </div>
+            </div>
+          </div>
+
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<ArrowRight className="w-4 h-4 order-last" />}
+            onClick={() => onSelectChallenge(nextChallenge.id)}
+          >
+            Continue where you left off
+          </Button>
+        </section>
+      )}
 
       {/* Filter Tabs & Counter */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-[var(--color-border)] pb-4">
@@ -130,6 +178,21 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
               className="flex flex-col justify-between hover:border-[var(--color-accent-border)] transition-all group"
             >
               <div className="space-y-4">
+                {/* Real YouTube thumbnail (full-bleed, offsets the card padding) */}
+                <div className="-mt-6 -mx-6 mb-1 aspect-video overflow-hidden rounded-t-[var(--radius)] bg-[var(--color-surface-subtle)] border-b border-[var(--color-border)] flex items-center justify-center">
+                  <img
+                    src={`https://img.youtube.com/vi/${video.youtubeId}/hqdefault.jpg`}
+                    alt={`Thumbnail for ${video.title} by ${video.channel}`}
+                    loading="lazy"
+                    onError={e => {
+                      // Graceful fallback: hide a failed image so the subtle
+                      // surface + channel label below still read cleanly.
+                      e.currentTarget.style.display = 'none';
+                    }}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                </div>
+
                 {/* Video Header & Meta */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs text-[var(--color-muted)] font-mono">

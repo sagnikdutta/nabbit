@@ -1,19 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { Challenge, Video } from '../lib/types';
+import { Challenge, Video, RecallItem } from '../lib/types';
 import { CodeBlock } from '../components/CodeBlock';
 import { OptionCard } from '../components/OptionCard';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
+import { RevealScreen } from './RevealScreen';
 import { ArrowLeft, CheckCircle, HelpCircle, AlertTriangle, ShieldCheck } from 'lucide-react';
+
+export interface AttemptResult {
+  correct: boolean;
+  explanation: string;
+  recallItem: RecallItem;
+}
 
 export interface ChallengeScreenProps {
   challenge: Challenge;
   video: Video;
   allChallengesInVideo: Challenge[];
   onBackToLibrary: () => void;
-  onSubmitAttempt: (chosenOption: number) => void;
+  onSubmitAttempt: (chosenOption: number) => Promise<AttemptResult>;
   onSelectAnotherChallenge: (challengeId: string) => void;
+  onNextChallenge: () => void;
+  onGoToRecall: () => void;
 }
 
 export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
@@ -23,12 +32,18 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
   onBackToLibrary,
   onSubmitAttempt,
   onSelectAnotherChallenge,
+  onNextChallenge,
+  onGoToRecall,
 }) => {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [phase, setPhase] = useState<'answering' | 'revealed'>('answering');
+  const [result, setResult] = useState<AttemptResult | null>(null);
 
-  // Keyboard shortcut support (1-4 and Enter)
+  // Keyboard shortcut support (1-4 and Enter) — only while answering
   useEffect(() => {
+    if (phase !== 'answering') return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['1', '2', '3', '4'].includes(e.key)) {
         const idx = parseInt(e.key, 10) - 1;
@@ -42,20 +57,54 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedOption, challenge]);
+  }, [selectedOption, challenge, phase]);
 
-  // Reset selected option when challenge changes
+  // Reset to a fresh answering state when the challenge changes
   useEffect(() => {
     setSelectedOption(null);
+    setPhase('answering');
+    setResult(null);
+    setIsSubmitting(false);
   }, [challenge.id]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (selectedOption === null || isSubmitting) return;
     setIsSubmitting(true);
-    onSubmitAttempt(selectedOption);
+    const res = await onSubmitAttempt(selectedOption);
+    setResult(res);
+    setPhase('revealed');
+    setIsSubmitting(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleRetry = () => {
+    setSelectedOption(null);
+    setResult(null);
+    setPhase('answering');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const currentIndex = allChallengesInVideo.findIndex(c => c.id === challenge.id);
+
+  // Once an answer is submitted, swap the drill in place for the inline reveal.
+  if (phase === 'revealed' && result && selectedOption !== null) {
+    return (
+      <RevealScreen
+        embedded
+        challenge={challenge}
+        video={video}
+        chosenOption={selectedOption}
+        isCorrect={result.correct}
+        explanation={result.explanation}
+        recallItem={result.recallItem}
+        allChallengesInVideo={allChallengesInVideo}
+        onNextChallenge={onNextChallenge}
+        onRetryChallenge={handleRetry}
+        onGoToRecall={onGoToRecall}
+        onBackToLibrary={onBackToLibrary}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6 pb-16">
@@ -80,11 +129,13 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
         </div>
 
         {/* Step indicator pills */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5" role="group" aria-label="Drills in this video">
           {allChallengesInVideo.map((c, i) => (
             <button
               key={c.id}
               onClick={() => onSelectAnotherChallenge(c.id)}
+              aria-label={`Drill ${i + 1}: ${c.concept}`}
+              aria-current={c.id === challenge.id ? 'step' : undefined}
               className={`w-6 h-6 rounded-[var(--radius-sm)] text-[11px] font-mono flex items-center justify-center cursor-pointer transition-colors ${
                 c.id === challenge.id
                   ? 'bg-[var(--color-accent)] text-white font-bold'
@@ -101,7 +152,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
       {/* Main 2-Column Split: Left (Video & Concept) / Right (Code Review & Fix Options) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left Column: Synchronized Video & Concept Briefing */}
-        <div className="lg:col-span-5 space-y-4">
+        <div className="lg:col-span-5 min-w-0 space-y-4">
           <VideoPlayer
             youtubeId={video.youtubeId}
             timestampSeconds={challenge.timestampSeconds}
@@ -136,7 +187,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
         </div>
 
         {/* Right Column: Code Snippet & Multiple Choice Fixes */}
-        <div className="lg:col-span-7 space-y-5">
+        <div className="lg:col-span-7 min-w-0 space-y-5">
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs">
               <span className="font-semibold text-[var(--color-text)]">Code Under Review</span>
@@ -179,15 +230,16 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
           </div>
 
           {/* Submission Action Bar */}
-          <div className="pt-4 border-t border-[var(--color-border)] flex items-center justify-between gap-4">
+          <div className="pt-4 border-t border-[var(--color-border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
             <div className="flex items-center gap-2 text-xs text-[var(--color-muted)] font-mono">
-              <ShieldCheck className="w-4 h-4 text-[var(--color-good)]" />
+              <ShieldCheck className="w-4 h-4 text-[var(--color-good)] shrink-0" />
               <span>Instant deterministic grading</span>
             </div>
 
             <Button
               size="lg"
               variant="primary"
+              className="w-full sm:w-auto justify-center"
               disabled={selectedOption === null}
               isLoading={isSubmitting}
               onClick={handleSubmit}

@@ -2,14 +2,37 @@ import React, { useState, useEffect } from 'react';
 import { api } from './lib/api';
 import { Video, Challenge, RecallItem, RecallStats } from './lib/types';
 import { Navbar } from './components/Navbar';
+import { NameOnboarding } from './components/NameOnboarding';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { ChallengeScreen } from './screens/ChallengeScreen';
-import { RevealScreen } from './screens/RevealScreen';
 import { RecallDashboardScreen } from './screens/RecallDashboardScreen';
 
+type Route = 'library' | 'challenge' | 'recall';
+
+// --- Hash router (B5): each screen has a shareable, refresh-safe URL ---
+// #/              → library
+// #/challenge/:id → a specific drill
+// #/recall        → spaced-recall dashboard
+function parseHash(): { route: Route; challengeId: string | null } {
+  const h = window.location.hash.replace(/^#/, '');
+  if (h.startsWith('/challenge/')) {
+    const id = decodeURIComponent(h.slice('/challenge/'.length));
+    return { route: 'challenge', challengeId: id || null };
+  }
+  if (h === '/recall') return { route: 'recall', challengeId: null };
+  return { route: 'library', challengeId: null };
+}
+
+function hashFor(route: Route, challengeId?: string): string {
+  if (route === 'challenge' && challengeId) return `#/challenge/${encodeURIComponent(challengeId)}`;
+  if (route === 'recall') return '#/recall';
+  return '#/';
+}
+
 export default function App() {
+  const initialHash = parseHash();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [route, setRoute] = useState<'library' | 'challenge' | 'reveal' | 'recall'>('library');
+  const [route, setRoute] = useState<Route>(initialHash.route);
 
   // Loaded Data
   const [videos, setVideos] = useState<Video[]>([]);
@@ -27,18 +50,48 @@ export default function App() {
   });
 
   // Active Challenge / Drill State
-  const [activeChallengeId, setActiveChallengeId] = useState<string>('react-state-batching');
-  const [lastAttemptResult, setLastAttemptResult] = useState<{
-    chosen: number;
-    isCorrect: boolean;
-    explanation: string;
-    recallItem: RecallItem;
-  } | null>(null);
+  const [activeChallengeId, setActiveChallengeId] = useState<string>(
+    initialHash.challengeId || 'react-state-batching'
+  );
+
+  // Local-only profile (B3): a name stored per browser, no account/password.
+  const [profileName, setProfileName] = useState('');
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Apply data-theme attribute on root element
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // Keep screen state in sync with the URL hash (back/forward, refresh, shared links).
+  useEffect(() => {
+    const sync = () => {
+      const parsed = parseHash();
+      setRoute(parsed.route);
+      if (parsed.challengeId) setActiveChallengeId(parsed.challengeId);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    window.addEventListener('hashchange', sync);
+    // Normalize a bare URL to #/ so the first entry is shareable.
+    if (!window.location.hash) {
+      window.history.replaceState(null, '', '#/');
+    }
+    return () => window.removeEventListener('hashchange', sync);
+  }, []);
+
+  // Navigate by writing the hash; the listener above updates screen state.
+  const go = (nextRoute: Route, challengeId?: string) => {
+    const id = challengeId ?? (nextRoute === 'challenge' ? activeChallengeId : undefined);
+    const target = hashFor(nextRoute, id);
+    if (window.location.hash === target) {
+      // Re-selecting the current hash emits no hashchange — update in place.
+      setRoute(nextRoute);
+      if (id) setActiveChallengeId(id);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.location.hash = target;
+    }
+  };
 
   // Initial Data Load
   const loadData = async () => {
@@ -65,55 +118,59 @@ export default function App() {
 
   useEffect(() => {
     loadData();
+
+    // Load the local profile; prompt for a name on first visit only.
+    const profile = api.getProfile();
+    setProfileName(profile.name);
+    if (!profile.onboarded) {
+      setShowOnboarding(true);
+    }
   }, []);
+
+  const handleSaveName = (name: string) => {
+    api.saveProfileName(name);
+    setProfileName(api.getProfile().name);
+    setShowOnboarding(false);
+  };
+
+  const handleSkipOnboarding = () => {
+    api.dismissOnboarding();
+    setShowOnboarding(false);
+  };
 
   const toggleTheme = () => {
     setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
   };
 
-  const handleNavigate = (
-    newRoute: 'library' | 'challenge' | 'recall',
-    param?: string
-  ) => {
-    if (param) {
-      setActiveChallengeId(param);
-    }
-    setRoute(newRoute);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const handleNavigate = (newRoute: Route, param?: string) => {
+    go(newRoute, param);
   };
 
   const handleSelectVideo = (videoId: string) => {
     const videoChallenges = challenges.filter(c => c.videoId === videoId);
     if (videoChallenges.length > 0) {
-      setActiveChallengeId(videoChallenges[0].id);
-      setRoute('challenge');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      go('challenge', videoChallenges[0].id);
     }
   };
 
   const handleSelectChallenge = (challengeId: string) => {
-    setActiveChallengeId(challengeId);
-    setRoute('challenge');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    go('challenge', challengeId);
   };
 
   const handleSubmitAttempt = async (chosen: number) => {
     const result = await api.submitAttempt(activeChallengeId, chosen);
-    setLastAttemptResult({
-      chosen,
-      isCorrect: result.correct,
-      explanation: result.explanation,
-      recallItem: result.recallItem,
-    });
 
-    // Refresh dashboard stats
+    // Refresh dashboard stats; the challenge screen reveals the result in place.
     const dashboard = await api.getRecallDashboard();
     setDueItems(dashboard.dueItems || []);
     setRecallItems(dashboard.allItems || []);
     setStats(dashboard.stats);
 
-    setRoute('reveal');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return {
+      correct: result.correct,
+      explanation: result.explanation,
+      recallItem: result.recallItem,
+    };
   };
 
   const handleNextChallenge = () => {
@@ -124,12 +181,10 @@ export default function App() {
     const currentIndex = inSameVideo.findIndex(c => c.id === activeChallengeId);
 
     if (currentIndex < inSameVideo.length - 1) {
-      setActiveChallengeId(inSameVideo[currentIndex + 1].id);
-      setRoute('challenge');
+      go('challenge', inSameVideo[currentIndex + 1].id);
     } else {
-      setRoute('library');
+      go('library');
     }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleTimeTravel = async (days: number) => {
@@ -155,6 +210,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--color-bg)] text-[var(--color-text)] transition-colors">
+      {/* First-visit, local-only name onboarding (B3) */}
+      <NameOnboarding
+        open={showOnboarding}
+        onSave={handleSaveName}
+        onSkip={handleSkipOnboarding}
+      />
+
       {/* 3-Zone Top Navigation Bar */}
       <Navbar
         currentRoute={route}
@@ -172,6 +234,8 @@ export default function App() {
             videos={videos}
             challenges={challenges}
             recallItems={recallItems}
+            stats={stats}
+            userName={profileName}
             onSelectVideo={handleSelectVideo}
             onSelectChallenge={handleSelectChallenge}
           />
@@ -185,23 +249,15 @@ export default function App() {
             onBackToLibrary={() => handleNavigate('library')}
             onSubmitAttempt={handleSubmitAttempt}
             onSelectAnotherChallenge={handleSelectChallenge}
+            onNextChallenge={handleNextChallenge}
+            onGoToRecall={() => handleNavigate('recall')}
           />
         )}
 
-        {route === 'reveal' && currentChallenge && currentVideo && lastAttemptResult && (
-          <RevealScreen
-            challenge={currentChallenge}
-            video={currentVideo}
-            chosenOption={lastAttemptResult.chosen}
-            isCorrect={lastAttemptResult.isCorrect}
-            explanation={lastAttemptResult.explanation}
-            recallItem={lastAttemptResult.recallItem}
-            allChallengesInVideo={currentVideoChallenges || []}
-            onNextChallenge={handleNextChallenge}
-            onRetryChallenge={() => setRoute('challenge')}
-            onGoToRecall={() => handleNavigate('recall')}
-            onBackToLibrary={() => handleNavigate('library')}
-          />
+        {route === 'challenge' && !currentChallenge && (
+          <div className="py-24 text-center text-sm text-[var(--color-muted)] font-mono">
+            Loading drill…
+          </div>
         )}
 
         {route === 'recall' && (

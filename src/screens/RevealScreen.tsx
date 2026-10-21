@@ -29,6 +29,8 @@ export interface RevealScreenProps {
   onRetryChallenge: () => void;
   onGoToRecall: () => void;
   onBackToLibrary: () => void;
+  /** When embedded inside ChallengeScreen, hide the page-level breadcrumb. */
+  embedded?: boolean;
 }
 
 export const RevealScreen: React.FC<RevealScreenProps> = ({
@@ -43,19 +45,24 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
   onRetryChallenge,
   onGoToRecall,
   onBackToLibrary,
+  embedded = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'diff' | 'explanation'>('diff');
 
-  // Trigger celebration confetti on correct solve
+  // Trigger celebration confetti on correct solve, using live theme tokens
+  // (no raw hex here — colors come from the design-token layer at runtime).
   useEffect(() => {
-    if (isCorrect) {
-      confetti({
-        particleCount: 75,
-        spread: 60,
-        origin: { y: 0.6 },
-        colors: ['#6366f1', '#10b981', '#f59e0b', '#3b82f6'],
-      });
-    }
+    if (!isCorrect) return;
+    const styles = getComputedStyle(document.documentElement);
+    const colors = ['--color-accent', '--color-good', '--color-warning', '--code-fn']
+      .map(token => styles.getPropertyValue(token).trim())
+      .filter(Boolean);
+    confetti({
+      particleCount: 75,
+      spread: 60,
+      origin: { y: 0.6 },
+      colors: colors.length ? colors : undefined,
+    });
   }, [isCorrect]);
 
   const currentIndex = allChallengesInVideo.findIndex(c => c.id === challenge.id);
@@ -68,19 +75,21 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
 
   return (
     <div className="space-y-8 pb-16">
-      {/* Top Breadcrumb */}
-      <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3 text-xs">
-        <button
-          onClick={onBackToLibrary}
-          className="flex items-center gap-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Library</span>
-        </button>
-        <span className="font-mono text-[var(--color-muted)]">
-          {video.title} · Concept {currentIndex + 1} of {allChallengesInVideo.length}
-        </span>
-      </div>
+      {/* Top Breadcrumb — only on the standalone page, not when embedded in ChallengeScreen */}
+      {!embedded && (
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3 text-xs">
+          <button
+            onClick={onBackToLibrary}
+            className="flex items-center gap-1.5 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Library</span>
+          </button>
+          <span className="font-mono text-[var(--color-muted)]">
+            {video.title} · Concept {currentIndex + 1} of {allChallengesInVideo.length}
+          </span>
+        </div>
+      )}
 
       {/* Verdict Hero Banner */}
       <section
@@ -181,7 +190,7 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="space-y-1.5">
+          <div className="min-w-0 space-y-1.5">
             <div className="flex items-center justify-between text-xs font-mono">
               <span className="text-[var(--color-danger)] font-semibold flex items-center gap-1">
                 <XCircle className="w-3.5 h-3.5" />
@@ -197,7 +206,7 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className="min-w-0 space-y-1.5">
             <div className="flex items-center justify-between text-xs font-mono">
               <span className="text-[var(--color-good)] font-semibold flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5" />
@@ -239,13 +248,25 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
       </section>
 
       {/* Navigation & Next Actions */}
-      <div className="pt-4 border-t border-[var(--color-border)] flex flex-wrap items-center justify-between gap-4">
-        <Button variant="outline" size="md" onClick={onRetryChallenge} icon={<RotateCcw className="w-4 h-4" />}>
+      <div className="pt-4 border-t border-[var(--color-border)] flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-3">
+        <Button
+          variant="outline"
+          size="md"
+          className="w-full sm:w-auto justify-center"
+          onClick={onRetryChallenge}
+          icon={<RotateCcw className="w-4 h-4" />}
+        >
           Try This Drill Again
         </Button>
 
-        <div className="flex items-center gap-3">
-          <Button variant="secondary" size="md" onClick={onGoToRecall} icon={<Calendar className="w-4 h-4" />}>
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          <Button
+            variant="secondary"
+            size="md"
+            className="w-full sm:w-auto justify-center"
+            onClick={onGoToRecall}
+            icon={<Calendar className="w-4 h-4" />}
+          >
             View Spaced Recall Queue
           </Button>
 
@@ -253,13 +274,19 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
             <Button
               variant="primary"
               size="md"
+              className="w-full sm:w-auto justify-center"
               onClick={onNextChallenge}
               icon={<ArrowRight className="w-4 h-4 order-last" />}
             >
               Next Challenge in Pack
             </Button>
           ) : (
-            <Button variant="primary" size="md" onClick={onBackToLibrary}>
+            <Button
+              variant="primary"
+              size="md"
+              className="w-full sm:w-auto justify-center"
+              onClick={onBackToLibrary}
+            >
               Explore More Videos
             </Button>
           )}
