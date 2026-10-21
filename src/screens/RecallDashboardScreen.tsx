@@ -1,5 +1,6 @@
 import React from 'react';
 import { RecallItem, Challenge, RecallStats, Video } from '../lib/types';
+import type { PermissionState } from '../lib/reminders';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
@@ -15,6 +16,8 @@ import {
   Sparkles,
   ArrowRight,
   ShieldCheck,
+  Bell,
+  BellOff,
 } from 'lucide-react';
 
 export interface RecallDashboardScreenProps {
@@ -23,6 +26,9 @@ export interface RecallDashboardScreenProps {
   allItems: (RecallItem & { challenge?: Challenge })[];
   videos: Video[];
   offsetDays: number;
+  remindersOn: boolean;
+  notifyPermission: PermissionState;
+  onToggleReminders: () => void;
   onSetOffset: (days: number) => void;
   onResetData: () => void;
   onLaunchDrill: (challengeId: string) => void;
@@ -35,6 +41,9 @@ export const RecallDashboardScreen: React.FC<RecallDashboardScreenProps> = ({
   allItems,
   videos,
   offsetDays,
+  remindersOn,
+  notifyPermission,
+  onToggleReminders,
   onSetOffset,
   onResetData,
   onLaunchDrill,
@@ -143,6 +152,45 @@ export const RecallDashboardScreen: React.FC<RecallDashboardScreenProps> = ({
           </p>
         </Card>
       </div>
+
+      {/* Review reminders (N6) */}
+      <section className="rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[var(--shadow-sm)]">
+        <div className="flex items-start gap-3">
+          <div
+            className={`w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center shrink-0 ${
+              remindersOn
+                ? 'bg-[var(--color-good)] text-white'
+                : 'bg-[var(--color-surface-subtle)] text-[var(--color-muted)] border border-[var(--color-border)]'
+            }`}
+          >
+            {remindersOn ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[var(--color-text)]">Review reminders</p>
+            <p className="text-xs text-[var(--color-muted)] leading-relaxed">
+              {notifyPermission === 'unsupported'
+                ? 'This browser does not support notifications.'
+                : notifyPermission === 'denied'
+                ? 'Notifications are blocked — enable them in your browser settings, then try again.'
+                : remindersOn
+                ? 'A browser notification nudges you when concepts are due. Scheduled email/push is on the roadmap.'
+                : 'Get a browser nudge when concepts are due. Shows when you open Nabbit — scheduled email/push is on the roadmap.'}
+            </p>
+          </div>
+        </div>
+
+        {notifyPermission !== 'unsupported' && notifyPermission !== 'denied' && (
+          <Button
+            size="sm"
+            variant={remindersOn ? 'secondary' : 'primary'}
+            className="w-full sm:w-auto justify-center shrink-0"
+            onClick={onToggleReminders}
+            icon={remindersOn ? <BellOff className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
+          >
+            {remindersOn ? 'Turn off reminders' : 'Enable review reminders'}
+          </Button>
+        )}
+      </section>
 
       {/* Due Today Queue */}
       <section className="space-y-4">

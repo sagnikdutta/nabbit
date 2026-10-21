@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { api } from './lib/api';
 import { Video, Challenge, RecallItem, RecallStats } from './lib/types';
+import {
+  getRemindersEnabled,
+  setRemindersEnabled,
+  getNotificationPermission,
+  requestNotificationPermission,
+  notifyDueReviews,
+  type PermissionState,
+} from './lib/reminders';
 import { Navbar } from './components/Navbar';
 import { NameOnboarding } from './components/NameOnboarding';
 import { LibraryScreen } from './screens/LibraryScreen';
@@ -29,8 +37,33 @@ function hashFor(route: Route, challengeId?: string): string {
   return '#/';
 }
 
+// Shared bug-dare links are `/?dare=<challengeId>` (a server-readable query param
+// so crawlers get per-challenge OG tags — see server.ts). Resolve it, or the hash.
+function resolveInitialLocation(): { route: Route; challengeId: string | null } {
+  const dare = new URLSearchParams(window.location.search).get('dare');
+  if (dare) return { route: 'challenge', challengeId: dare };
+  return parseHash();
+}
+
+// N3 — the "what is this?" intro strip is dismissed per browser.
+const INTRO_DISMISSED_KEY = 'nabbit_intro_dismissed_v1';
+function readIntroDismissed(): boolean {
+  try {
+    return localStorage.getItem(INTRO_DISMISSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+function persistIntroDismissed() {
+  try {
+    localStorage.setItem(INTRO_DISMISSED_KEY, '1');
+  } catch {
+    // storage unavailable — the strip simply reappears next load
+  }
+}
+
 export default function App() {
-  const initialHash = parseHash();
+  const initialHash = resolveInitialLocation();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [route, setRoute] = useState<Route>(initialHash.route);
 
@@ -57,6 +90,14 @@ export default function App() {
   // Local-only profile (B3): a name stored per browser, no account/password.
   const [profileName, setProfileName] = useState('');
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboarded, setOnboarded] = useState<boolean>(() => api.getProfile().onboarded);
+
+  // N3 — first-timer "what is this?" context strip (cold dare arrivals especially).
+  const [introDismissed, setIntroDismissed] = useState<boolean>(readIntroDismissed);
+
+  // N6 — review reminders (browser notifications when due; opt-in, local only).
+  const [remindersOn, setRemindersOn] = useState<boolean>(getRemindersEnabled);
+  const [notifyPermission, setNotifyPermission] = useState<PermissionState>(getNotificationPermission);
 
   // Apply data-theme attribute on root element
   useEffect(() => {
@@ -72,8 +113,14 @@ export default function App() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
     window.addEventListener('hashchange', sync);
-    // Normalize a bare URL to #/ so the first entry is shareable.
-    if (!window.location.hash) {
+
+    // A dare link arrives as `/?dare=<id>`; convert it to the clean hash URL
+    // (state was already initialized from it) so the query doesn't linger.
+    const dare = new URLSearchParams(window.location.search).get('dare');
+    if (dare) {
+      window.history.replaceState(null, '', `${window.location.pathname}#/challenge/${encodeURIComponent(dare)}`);
+    } else if (!window.location.hash) {
+      // Normalize a bare URL to #/ so the first entry is shareable.
       window.history.replaceState(null, '', '#/');
     }
     return () => window.removeEventListener('hashchange', sync);
@@ -117,25 +164,61 @@ export default function App() {
   };
 
   useEffect(() => {
-    loadData();
+    (async () => {
+      await loadData();
+      // N6 — nudge once on open if reminders are on and concepts are due now.
+      if (getRemindersEnabled() && getNotificationPermission() === 'granted') {
+        const dash = await api.getRecallDashboard();
+        if (dash.stats.dueCount > 0) {
+          notifyDueReviews(dash.stats.dueCount, () => {
+            window.location.hash = '#/recall';
+          });
+        }
+      }
+    })();
 
-    // Load the local profile; prompt for a name on first visit only.
-    const profile = api.getProfile();
-    setProfileName(profile.name);
-    if (!profile.onboarded) {
-      setShowOnboarding(true);
-    }
+    // Load the local profile. The name prompt is deferred to AFTER the first
+    // attempt (value before any gate) — see handleSubmitAttempt, not here.
+    setProfileName(api.getProfile().name);
   }, []);
+
+  const handleToggleReminders = async () => {
+    if (remindersOn) {
+      setRemindersEnabled(false);
+      setRemindersOn(false);
+      return;
+    }
+    const perm = await requestNotificationPermission();
+    setNotifyPermission(perm);
+    if (perm === 'granted') {
+      setRemindersEnabled(true);
+      setRemindersOn(true);
+      // Immediate confirmation nudge if something is already due.
+      if (stats.dueCount > 0) {
+        notifyDueReviews(stats.dueCount, () => handleNavigate('recall'));
+      }
+    } else {
+      setRemindersEnabled(false);
+      setRemindersOn(false);
+    }
+  };
 
   const handleSaveName = (name: string) => {
     api.saveProfileName(name);
     setProfileName(api.getProfile().name);
+    setOnboarded(true);
     setShowOnboarding(false);
   };
 
   const handleSkipOnboarding = () => {
     api.dismissOnboarding();
+    setOnboarded(true);
     setShowOnboarding(false);
+  };
+
+  const handleDismissIntro = () => {
+    setIntroDismissed(true);
+    persistIntroDismissed();
   };
 
   const toggleTheme = () => {
@@ -165,6 +248,12 @@ export default function App() {
     setDueItems(dashboard.dueItems || []);
     setRecallItems(dashboard.allItems || []);
     setStats(dashboard.stats);
+
+    // Activation: offer the skippable name prompt AFTER the first attempt, and
+    // only once. A short delay lets the reveal (the "aha") land first.
+    if (!api.getProfile().onboarded) {
+      window.setTimeout(() => setShowOnboarding(true), 1400);
+    }
 
     return {
       correct: result.correct,
@@ -208,6 +297,18 @@ export default function App() {
   const currentVideoChallenges =
     currentChallenge && challenges.filter(c => c.videoId === currentChallenge.videoId);
 
+  // Dynamic tab title (client-side) — helps shared links and bookmarks read well.
+  useEffect(() => {
+    const base = 'Nabbit — Code Review Drills & Spaced Recall';
+    if (route === 'challenge' && currentChallenge) {
+      document.title = `Catch the bug: ${currentChallenge.concept} · Nabbit`;
+    } else if (route === 'recall') {
+      document.title = `Spaced Recall · Nabbit`;
+    } else {
+      document.title = base;
+    }
+  }, [route, currentChallenge]);
+
   return (
     <div className="min-h-screen flex flex-col bg-[var(--color-bg)] text-[var(--color-text)] transition-colors">
       {/* First-visit, local-only name onboarding (B3) */}
@@ -246,6 +347,9 @@ export default function App() {
             challenge={currentChallenge}
             video={currentVideo}
             allChallengesInVideo={currentVideoChallenges || []}
+            userName={profileName}
+            showIntro={!onboarded && !introDismissed}
+            onDismissIntro={handleDismissIntro}
             onBackToLibrary={() => handleNavigate('library')}
             onSubmitAttempt={handleSubmitAttempt}
             onSelectAnotherChallenge={handleSelectChallenge}
@@ -267,6 +371,9 @@ export default function App() {
             allItems={recallItems}
             videos={videos}
             offsetDays={stats.simulatedOffsetDays}
+            remindersOn={remindersOn}
+            notifyPermission={notifyPermission}
+            onToggleReminders={handleToggleReminders}
             onSetOffset={handleTimeTravel}
             onResetData={handleResetData}
             onLaunchDrill={handleSelectChallenge}

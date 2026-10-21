@@ -15,6 +15,10 @@ import {
   Check,
   BookOpen,
   ArrowLeft,
+  Share2,
+  GraduationCap,
+  Sparkles,
+  ExternalLink,
 } from 'lucide-react';
 
 export interface RevealScreenProps {
@@ -31,6 +35,8 @@ export interface RevealScreenProps {
   onBackToLibrary: () => void;
   /** When embedded inside ChallengeScreen, hide the page-level breadcrumb. */
   embedded?: boolean;
+  /** Optional local profile name, used to personalize the verdict. */
+  userName?: string;
 }
 
 export const RevealScreen: React.FC<RevealScreenProps> = ({
@@ -46,8 +52,34 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
   onGoToRecall,
   onBackToLibrary,
   embedded = false,
+  userName,
 }) => {
   const [activeTab, setActiveTab] = useState<'diff' | 'explanation'>('diff');
+  const [shareState, setShareState] = useState<'idle' | 'copied' | 'shared'>('idle');
+
+  // N2 — bug-dare: share the exact drill via a server-readable `?dare=` link.
+  const dareUrl = `${window.location.origin}/?dare=${encodeURIComponent(challenge.id)}`;
+  const dareText = `I just caught a ${challenge.concept} bug on Nabbit — can you spot it?`;
+
+  // N7 — native recommendation at the pain moment (a miss), stronger when the
+  // concept has been missed repeatedly. Points at the real source chapter.
+  const missCount = recallItem.history.filter(a => !a.correct).length;
+  const watchUrl = `https://www.youtube.com/watch?v=${video.youtubeId}&t=${challenge.timestampSeconds}s`;
+
+  const handleShareDare = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Nabbit bug-dare', text: dareText, url: dareUrl });
+        setShareState('shared');
+      } else {
+        await navigator.clipboard.writeText(`${dareText} ${dareUrl}`);
+        setShareState('copied');
+      }
+      window.setTimeout(() => setShareState('idle'), 2200);
+    } catch {
+      // user cancelled the share sheet, or clipboard is blocked — no-op
+    }
+  };
 
   // Trigger celebration confetti on correct solve, using live theme tokens
   // (no raw hex here — colors come from the design-token layer at runtime).
@@ -115,7 +147,11 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
                 isCorrect ? 'text-[var(--color-good-ink)]' : 'text-[var(--color-danger-ink)]'
               }`}
             >
-              {isCorrect ? 'Bug Caught! Sharp Review Judgment.' : 'Planted Bug Missed.'}
+              {isCorrect
+                ? userName
+                  ? `Nice catch, ${userName}! Sharp Review Judgment.`
+                  : 'Bug Caught! Sharp Review Judgment.'
+                : 'Planted Bug Missed.'}
             </h1>
           </div>
 
@@ -149,6 +185,35 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
             </div>
           )}
         </div>
+      </section>
+
+      {/* Bug-dare share (N2) — turn a win into the next person's acquisition */}
+      <section className="rounded-[var(--radius)] border border-[var(--color-accent-border)] bg-[var(--color-accent-weak)] p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--color-accent)] text-[var(--color-accent-ink)] flex items-center justify-center shrink-0">
+            <Share2 className="w-4 h-4" aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[var(--color-text)]">Dare a friend to catch it</p>
+            <p className="text-xs text-[var(--color-muted)]">
+              Shares the exact drill — they attempt the bug before seeing the answer.
+            </p>
+          </div>
+        </div>
+
+        <Button
+          variant="primary"
+          size="md"
+          className="w-full sm:w-auto justify-center"
+          onClick={handleShareDare}
+          icon={<Share2 className="w-4 h-4" />}
+        >
+          {shareState === 'copied'
+            ? 'Dare link copied!'
+            : shareState === 'shared'
+            ? 'Shared!'
+            : 'Share this bug-dare'}
+        </Button>
       </section>
 
       {/* Answer Options Overview */}
@@ -246,6 +311,44 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
           </div>
         </div>
       </section>
+
+      {/* N7 — native recommendation at the pain moment (only after a miss) */}
+      {!isCorrect && (
+        <section className="rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] p-4 sm:p-5 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--color-warning-weak)] text-[var(--color-warning-ink)] flex items-center justify-center shrink-0">
+              <GraduationCap className="w-4 h-4" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm font-semibold text-[var(--color-text)]">
+                {missCount >= 2
+                  ? `You've missed ${challenge.concept} a few times`
+                  : `Struggling with ${challenge.concept}?`}
+              </p>
+              <p className="text-xs text-[var(--color-muted)] leading-relaxed">
+                Reinforce it straight from the source — rewatch the exact chapter where this
+                concept is taught.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1">
+            <a
+              href={watchUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-[var(--color-accent)] hover:underline"
+            >
+              <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+              Rewatch the chapter ({challenge.timestampFormatted})
+            </a>
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-[var(--color-muted)] font-mono">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" aria-hidden="true" />
+              Pro: focused courses &amp; more drill formats — coming soon
+            </span>
+          </div>
+        </section>
+      )}
 
       {/* Navigation & Next Actions */}
       <div className="pt-4 border-t border-[var(--color-border)] flex flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-3">

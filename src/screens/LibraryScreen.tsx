@@ -24,15 +24,36 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   onSelectChallenge,
 }) => {
   const [selectedStack, setSelectedStack] = useState<'all' | 'react' | 'javascript'>('all');
+  const [selectedDifficulty, setSelectedDifficulty] =
+    useState<'all' | 'Beginner' | 'Intermediate' | 'Advanced'>('all');
 
-  const filteredVideos =
-    selectedStack === 'all'
-      ? videos
-      : videos.filter(v => v.stack === selectedStack);
-
-  // Find next unattempted challenge for the quick drill button
   const solvedIds = new Set(recallItems.map(i => i.challengeId));
-  const nextChallenge = challenges.find(c => !solvedIds.has(c.id)) || challenges[0];
+
+  // N4 — the quick-start lands on a *winnable* first drill: an unsolved Beginner
+  // one if available, else any unsolved, else the first drill.
+  const nextChallenge =
+    challenges.find(c => !solvedIds.has(c.id) && c.difficulty === 'Beginner') ||
+    challenges.find(c => !solvedIds.has(c.id)) ||
+    challenges[0];
+
+  const challengesFor = (videoId: string) =>
+    challenges.filter(
+      c =>
+        c.videoId === videoId &&
+        (selectedDifficulty === 'all' || c.difficulty === selectedDifficulty)
+    );
+
+  const filteredVideos = (selectedStack === 'all'
+    ? videos
+    : videos.filter(v => v.stack === selectedStack)
+  ).filter(v => challengesFor(v.id).length > 0);
+
+  const DIFFICULTIES: ('all' | 'Beginner' | 'Intermediate' | 'Advanced')[] = [
+    'all',
+    'Beginner',
+    'Intermediate',
+    'Advanced',
+  ];
 
   return (
     <div className="space-y-8 pb-12">
@@ -128,44 +149,65 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-1.5 p-1 bg-[var(--color-surface-subtle)] rounded-[var(--radius)] border border-[var(--color-border)]">
-          <button
-            onClick={() => setSelectedStack('all')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-[var(--radius-sm)] transition-colors cursor-pointer ${
-              selectedStack === 'all'
-                ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-[var(--shadow-sm)]'
-                : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
-            }`}
-          >
-            All Stacks ({videos.length})
-          </button>
-          <button
-            onClick={() => setSelectedStack('react')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-[var(--radius-sm)] transition-colors cursor-pointer ${
-              selectedStack === 'react'
-                ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-[var(--shadow-sm)]'
-                : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
-            }`}
-          >
-            React (2)
-          </button>
-          <button
-            onClick={() => setSelectedStack('javascript')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-[var(--radius-sm)] transition-colors cursor-pointer ${
-              selectedStack === 'javascript'
-                ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-[var(--shadow-sm)]'
-                : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
-            }`}
-          >
-            JavaScript (1)
-          </button>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          {/* Stack filter */}
+          <div className="flex items-center gap-1.5 p-1 bg-[var(--color-surface-subtle)] rounded-[var(--radius)] border border-[var(--color-border)]">
+            <button
+              onClick={() => setSelectedStack('all')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-[var(--radius-sm)] transition-colors cursor-pointer ${
+                selectedStack === 'all'
+                  ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-[var(--shadow-sm)]'
+                  : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
+              }`}
+            >
+              All Stacks ({videos.length})
+            </button>
+            <button
+              onClick={() => setSelectedStack('react')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-[var(--radius-sm)] transition-colors cursor-pointer ${
+                selectedStack === 'react'
+                  ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-[var(--shadow-sm)]'
+                  : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
+              }`}
+            >
+              React (2)
+            </button>
+            <button
+              onClick={() => setSelectedStack('javascript')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-[var(--radius-sm)] transition-colors cursor-pointer ${
+                selectedStack === 'javascript'
+                  ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-[var(--shadow-sm)]'
+                  : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
+              }`}
+            >
+              JavaScript (1)
+            </button>
+          </div>
+
+          {/* Difficulty filter (N4) — find a winnable level */}
+          <div className="flex items-center gap-1.5 p-1 bg-[var(--color-surface-subtle)] rounded-[var(--radius)] border border-[var(--color-border)]">
+            {DIFFICULTIES.map(d => (
+              <button
+                key={d}
+                onClick={() => setSelectedDifficulty(d)}
+                aria-pressed={selectedDifficulty === d}
+                className={`px-3 py-1.5 text-xs font-medium rounded-[var(--radius-sm)] transition-colors cursor-pointer ${
+                  selectedDifficulty === d
+                    ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-[var(--shadow-sm)]'
+                    : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
+                }`}
+              >
+                {d === 'all' ? 'All Levels' : d}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Video Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredVideos.map(video => {
-          const videoChallenges = challenges.filter(c => c.videoId === video.id);
+          const videoChallenges = challengesFor(video.id);
           const solvedInVideo = videoChallenges.filter(c => solvedIds.has(c.id)).length;
           const progressPercent =
             videoChallenges.length > 0
@@ -250,9 +292,22 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                               {c.concept}
                             </span>
                           </div>
-                          <span className="text-[10px] font-mono text-[var(--color-muted)] shrink-0 tabular-nums">
-                            {c.timestampFormatted}
-                          </span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span
+                              className={`text-[9px] font-mono font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-[var(--radius-sm)] ${
+                                c.difficulty === 'Beginner'
+                                  ? 'bg-[var(--color-good-weak)] text-[var(--color-good)]'
+                                  : c.difficulty === 'Intermediate'
+                                  ? 'bg-[var(--color-accent-weak)] text-[var(--color-accent)]'
+                                  : 'bg-[var(--color-warning-weak)] text-[var(--color-warning-ink)]'
+                              }`}
+                            >
+                              {c.difficulty.slice(0, 3)}
+                            </span>
+                            <span className="text-[10px] font-mono text-[var(--color-muted)] tabular-nums">
+                              {c.timestampFormatted}
+                            </span>
+                          </div>
                         </button>
                       );
                     })}
@@ -283,14 +338,35 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         })}
       </div>
 
-      {/* Roadmap Teaser Banner */}
-      <section className="rounded-[var(--radius)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-subtle)] p-5 text-center space-y-2">
-        <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--color-muted)]">
+      {/* Nabbit Pro preview (N7) — premium entry + roadmap, no transactions */}
+      <section className="rounded-[var(--radius)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-subtle)] p-5 space-y-3">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text)]">
           <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-          <span>Roadmap (Post-Buildathon)</span>
+          <span>Nabbit Pro</span>
+          <span className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-[var(--color-accent-weak)] text-[var(--color-accent)] text-[10px] font-mono uppercase tracking-wide">
+            Coming soon
+          </span>
         </div>
-        <p className="text-xs text-[var(--color-muted)] max-w-lg mx-auto">
-          "Paste Any YouTube URL" auto-generation, PR Review format (approving or requesting changes on multi-file implementations), and Python/Go backend packs are planned for next release.
+
+        {/* Paste-any-video auto-generation (premium entry, disabled for MVP) */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="url"
+            disabled
+            placeholder="Paste any YouTube tutorial URL to auto-generate drills…"
+            aria-label="Paste a YouTube URL to auto-generate drills (Pro, coming soon)"
+            className="flex-1 min-w-0 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-muted)] disabled:cursor-not-allowed"
+          />
+          <Button size="sm" variant="secondary" disabled className="shrink-0 justify-center">
+            Generate drills
+          </Button>
+        </div>
+
+        <p className="text-xs text-[var(--color-muted)] leading-relaxed">
+          Pro unlocks auto-generation from any video, more judgment formats (predict-output,
+          spot-the-flaw, trade-off), extra stacks and a mastery dashboard.{' '}
+          <span className="text-[var(--color-text)] font-medium">For teams:</span> drills on your
+          own codebase and a shared dashboard to verify your devs' code-review judgment.
         </p>
       </section>
     </div>

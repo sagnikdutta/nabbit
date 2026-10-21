@@ -6,7 +6,8 @@ import { VideoPlayer } from '../components/VideoPlayer';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { RevealScreen } from './RevealScreen';
-import { ArrowLeft, CheckCircle, HelpCircle, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { ConceptTimeline } from '../components/ConceptTimeline';
+import { ArrowLeft, CheckCircle, HelpCircle, AlertTriangle, ShieldCheck, Target, X } from 'lucide-react';
 
 export interface AttemptResult {
   correct: boolean;
@@ -18,6 +19,9 @@ export interface ChallengeScreenProps {
   challenge: Challenge;
   video: Video;
   allChallengesInVideo: Challenge[];
+  userName?: string;
+  showIntro?: boolean;
+  onDismissIntro?: () => void;
   onBackToLibrary: () => void;
   onSubmitAttempt: (chosenOption: number) => Promise<AttemptResult>;
   onSelectAnotherChallenge: (challengeId: string) => void;
@@ -29,6 +33,9 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
   challenge,
   video,
   allChallengesInVideo,
+  userName,
+  showIntro = false,
+  onDismissIntro,
   onBackToLibrary,
   onSubmitAttempt,
   onSelectAnotherChallenge,
@@ -91,6 +98,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
     return (
       <RevealScreen
         embedded
+        userName={userName}
         challenge={challenge}
         video={video}
         chosenOption={selectedOption}
@@ -108,6 +116,30 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
 
   return (
     <div className="space-y-6 pb-16">
+      {/* N3 — "What is this?" context strip for first-time / cold-dare arrivals */}
+      {showIntro && (
+        <div className="rounded-[var(--radius)] border border-[var(--color-accent-border)] bg-[var(--color-accent-weak)] px-4 py-3 flex items-start gap-3">
+          <div className="w-7 h-7 rounded-[var(--radius-sm)] bg-[var(--color-accent)] text-[var(--color-accent-ink)] flex items-center justify-center shrink-0">
+            <Target className="w-3.5 h-3.5 stroke-[2.5]" aria-hidden="true" />
+          </div>
+          <p className="flex-1 text-xs sm:text-[13px] text-[var(--color-text)] leading-relaxed pt-0.5">
+            <strong className="font-semibold">New to Nabbit?</strong>{' '}
+            It turns dev tutorials into bug-hunt drills — spot the one planted bug below and
+            pick the correct fix. No signup needed.
+          </p>
+          {onDismissIntro && (
+            <button
+              type="button"
+              onClick={onDismissIntro}
+              aria-label="Dismiss intro"
+              className="shrink-0 text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer -mt-0.5"
+            >
+              <X className="w-4 h-4" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Top Breadcrumb & Step Navigation */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--color-border)] pb-3">
         <div className="flex items-center gap-3">
@@ -184,6 +216,16 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
               <span>Planted flaw located around line {challenge.buggyLines.join(', ')}</span>
             </div>
           </div>
+
+          {/* N5 — per-video concept timeline: quick context + jump between drills */}
+          {allChallengesInVideo.length > 1 && (
+            <ConceptTimeline
+              challenges={allChallengesInVideo}
+              activeId={challenge.id}
+              onSelect={onSelectAnotherChallenge}
+              summary={video.description}
+            />
+          )}
         </div>
 
         {/* Right Column: Code Snippet & Multiple Choice Fixes */}
