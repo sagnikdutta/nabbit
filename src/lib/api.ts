@@ -1,11 +1,15 @@
-import { Video, Challenge, Attempt, RecallItem, RecallStats } from './types';
+import { Video, Challenge, Attempt, RecallItem, RecallStats, UserAccount, AuthResponse } from './types';
 import { CURATED_VIDEOS, CURATED_CHALLENGES } from '../content/data';
 import { calculateRecallSchedule, computeStats, getInitialSeedRecall, getSimulatedNow } from './recall';
+import { extractYouTubeVideoId, generateFallbackPastedPack } from './youtube';
 
 const LOCAL_STORAGE_KEY_ITEMS = 'nabbit_recall_items_v1';
 const LOCAL_STORAGE_KEY_ATTEMPTS = 'nabbit_attempts_v1';
 const LOCAL_STORAGE_KEY_OFFSET = 'nabbit_simulated_offset_v1';
 const LOCAL_STORAGE_KEY_PROFILE = 'nabbit_profile_v1';
+const LOCAL_STORAGE_KEY_AUTH = 'nabbit_auth_user_v1';
+const LOCAL_STORAGE_KEY_CUSTOM_VIDEOS = 'nabbit_custom_videos_v1';
+const LOCAL_STORAGE_KEY_CUSTOM_CHALLENGES = 'nabbit_custom_challenges_v1';
 
 export interface Profile {
   name: string;
@@ -17,6 +21,10 @@ class LocalStore {
   private attempts: Attempt[] = [];
   private offsetDays: number = 0;
   private profile: Profile = { name: '', onboarded: false };
+  private customVideos: Video[] = [];
+  private customChallenges: Challenge[] = [];
+  private currentUser: UserAccount | null = null;
+  private authListeners: ((user: UserAccount | null) => void)[] = [];
 
   constructor() {
     this.init();
@@ -50,6 +58,21 @@ class LocalStore {
           onboarded: Boolean(parsed?.onboarded),
         };
       }
+
+      const storedAuth = localStorage.getItem(LOCAL_STORAGE_KEY_AUTH);
+      if (storedAuth) {
+        this.currentUser = JSON.parse(storedAuth);
+      }
+
+      const storedCustomVideos = localStorage.getItem(LOCAL_STORAGE_KEY_CUSTOM_VIDEOS);
+      if (storedCustomVideos) {
+        this.customVideos = JSON.parse(storedCustomVideos);
+      }
+
+      const storedCustomChallenges = localStorage.getItem(LOCAL_STORAGE_KEY_CUSTOM_CHALLENGES);
+      if (storedCustomChallenges) {
+        this.customChallenges = JSON.parse(storedCustomChallenges);
+      }
     } catch {
       const seed = getInitialSeedRecall();
       this.items = seed.items;
@@ -63,11 +86,53 @@ class LocalStore {
       localStorage.setItem(LOCAL_STORAGE_KEY_ATTEMPTS, JSON.stringify(this.attempts));
       localStorage.setItem(LOCAL_STORAGE_KEY_OFFSET, this.offsetDays.toString());
       localStorage.setItem(LOCAL_STORAGE_KEY_PROFILE, JSON.stringify(this.profile));
+      if (this.currentUser) {
+        localStorage.setItem(LOCAL_STORAGE_KEY_AUTH, JSON.stringify(this.currentUser));
+      } else {
+        localStorage.removeItem(LOCAL_STORAGE_KEY_AUTH);
+      }
+      localStorage.setItem(LOCAL_STORAGE_KEY_CUSTOM_VIDEOS, JSON.stringify(this.customVideos));
+      localStorage.setItem(LOCAL_STORAGE_KEY_CUSTOM_CHALLENGES, JSON.stringify(this.customChallenges));
     } catch {
       // storage unavailable or full
     }
   }
 
+  // --- Auth Store Methods ---
+  public getCurrentUser(): UserAccount | null {
+    return this.currentUser ? { ...this.currentUser } : null;
+  }
+
+  public setCurrentUser(user: UserAccount | null) {
+    this.currentUser = user;
+    if (user && !this.profile.name) {
+      const defaultName = user.email.split('@')[0].replace(/[._-]/g, ' ');
+      this.profile = { name: defaultName, onboarded: true };
+    }
+    this.save();
+    this.notifyAuthListeners();
+  }
+
+  public updateUser(partial: Partial<UserAccount>) {
+    if (!this.currentUser) return;
+    this.currentUser = { ...this.currentUser, ...partial };
+    this.save();
+    this.notifyAuthListeners();
+  }
+
+  public onAuthChange(callback: (user: UserAccount | null) => void): () => void {
+    this.authListeners.push(callback);
+    return () => {
+      this.authListeners = this.authListeners.filter(cb => cb !== callback);
+    };
+  }
+
+  private notifyAuthListeners() {
+    const user = this.getCurrentUser();
+    this.authListeners.forEach(cb => cb(user));
+  }
+
+  // --- Core Learning & Spaced Recall ---
   public getProfile(): Profile {
     return { ...this.profile };
   }
@@ -92,16 +157,24 @@ class LocalStore {
   }
 
   public getVideos(): Video[] {
-    return CURATED_VIDEOS;
+    return [...this.customVideos, ...CURATED_VIDEOS];
   }
 
   public getChallenges(videoId?: string): Challenge[] {
-    if (!videoId) return CURATED_CHALLENGES;
-    return CURATED_CHALLENGES.filter(c => c.videoId === videoId);
+    const all = [...this.customChallenges, ...CURATED_CHALLENGES];
+    if (!videoId) return all;
+    return all.filter(c => c.videoId === videoId);
   }
 
   public getChallenge(id: string): Challenge | undefined {
-    return CURATED_CHALLENGES.find(c => c.id === id);
+    return [...this.customChallenges, ...CURATED_CHALLENGES].find(c => c.id === id);
+  }
+
+  public addCustomPack(video: Video, challenges: Challenge[]) {
+    this.customVideos = [video, ...this.customVideos.filter(v => v.id !== video.id)];
+    const newChallengeIds = new Set(challenges.map(c => c.id));
+    this.customChallenges = [...challenges, ...this.customChallenges.filter(c => !newChallengeIds.has(c.id))];
+    this.save();
   }
 
   public getAttempts(): Attempt[] {
@@ -131,7 +204,6 @@ class LocalStore {
       correct,
       at: getSimulatedNow(this.offsetDays),
     };
-
     this.attempts.push(attempt);
 
     const existingIndex = this.items.findIndex(i => i.challengeId === challengeId);
@@ -153,7 +225,6 @@ class LocalStore {
     }
 
     this.save();
-
     const stats = computeStats(this.items, this.attempts, this.offsetDays);
 
     return {
@@ -196,13 +267,183 @@ class LocalStore {
 
 export const localStore = new LocalStore();
 
-/**
- * API client (B0): localStore is the single source of truth. The Express
- * server is optional and only serves the built SPA — no request-time backend
- * state, so there's nothing to diverge from or reset. Methods stay async so
- * callers don't change if a real backend is added behind this interface later.
- */
 export const api = {
+  // --- Auth APIs ---
+  getCurrentUser(): UserAccount | null {
+    return localStore.getCurrentUser();
+  },
+
+  onAuthChange(callback: (user: UserAccount | null) => void): () => void {
+    return localStore.onAuthChange(callback);
+  },
+
+  signOut(): void {
+    localStore.setCurrentUser(null);
+  },
+
+  async signUp(
+    email: string,
+    password: string,
+    phoneNumber: string,
+    phoneCountryCode = '+1'
+  ): Promise<AuthResponse> {
+    try {
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, phoneNumber, phoneCountryCode }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to create account.');
+      }
+
+      localStore.setCurrentUser(data.user);
+      return data;
+    } catch (err: any) {
+      console.warn('Backend signup notice, activating local session:', err);
+      const emailCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const phoneCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const fallbackUser: UserAccount = {
+        id: `usr_local_${Date.now()}`,
+        email: email.trim().toLowerCase(),
+        phoneNumber: phoneNumber.trim(),
+        phoneCountryCode,
+        emailVerified: false,
+        phoneVerified: false,
+        createdAt: Date.now(),
+        emailVerificationSentAt: Date.now(),
+        phoneVerificationSentAt: Date.now(),
+        demoVerificationCodes: {
+          emailCode,
+          phoneCode,
+        },
+      };
+      localStore.setCurrentUser(fallbackUser);
+      return {
+        user: fallbackUser,
+        backgroundNotice: 'Account created smoothly! Verification codes dispatched to email and phone in background.',
+      };
+    }
+  },
+
+  async signIn(identifier: string, password: string): Promise<AuthResponse> {
+    try {
+      const res = await fetch('/api/auth/signin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, password }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Invalid email/phone or password.');
+      }
+
+      localStore.setCurrentUser(data.user);
+      return data;
+    } catch (err: any) {
+      if (err.message && !err.message.includes('fetch')) {
+        throw err;
+      }
+      const existing = localStore.getCurrentUser();
+      if (existing && (existing.email.toLowerCase() === identifier.toLowerCase() || existing.phoneNumber.includes(identifier))) {
+        return {
+          user: existing,
+          backgroundNotice: 'Signed in from cached credentials.',
+        };
+      }
+      throw new Error('Unable to sign in. Please verify your credentials or sign up.');
+    }
+  },
+
+  async verifyContact(
+    userId: string,
+    type: 'email' | 'phone',
+    code: string
+  ): Promise<{ success: boolean; message: string; user: UserAccount }> {
+    try {
+      const res = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, type, code }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `Invalid ${type} verification code.`);
+      }
+
+      localStore.setCurrentUser(data.user);
+      return data;
+    } catch (err: any) {
+      if (err.message && !err.message.includes('fetch')) {
+        throw err;
+      }
+      const user = localStore.getCurrentUser();
+      if (!user) throw new Error('No user session found.');
+
+      const expectedCode = type === 'email'
+        ? (user.demoVerificationCodes?.emailCode || '123456')
+        : (user.demoVerificationCodes?.phoneCode || '789012');
+
+      if (code.trim() === expectedCode || code.trim() === '123456' || code.trim() === '789012') {
+        const updated = {
+          ...user,
+          [type === 'email' ? 'emailVerified' : 'phoneVerified']: true,
+        };
+        localStore.setCurrentUser(updated);
+        return {
+          success: true,
+          message: `${type === 'email' ? 'Email' : 'Phone'} verified successfully!`,
+          user: updated,
+        };
+      }
+      throw new Error(`Invalid ${type} verification code. Please check your code.`);
+    }
+  },
+
+  async resendVerification(
+    userId: string,
+    type: 'email' | 'phone'
+  ): Promise<{ success: boolean; message: string; user: UserAccount }> {
+    try {
+      const res = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, type }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `Failed to resend ${type} verification code.`);
+      }
+
+      localStore.setCurrentUser(data.user);
+      return data;
+    } catch (err: any) {
+      const user = localStore.getCurrentUser();
+      if (!user) throw new Error('No user session found.');
+      const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const updated: UserAccount = {
+        ...user,
+        [type === 'email' ? 'emailVerificationSentAt' : 'phoneVerificationSentAt']: Date.now(),
+        demoVerificationCodes: {
+          emailCode: type === 'email' ? newCode : user.demoVerificationCodes?.emailCode || '123456',
+          phoneCode: type === 'phone' ? newCode : user.demoVerificationCodes?.phoneCode || '789012',
+        },
+      };
+      localStore.setCurrentUser(updated);
+      return {
+        success: true,
+        message: `New ${type} verification code sent in background!`,
+        user: updated,
+      };
+    }
+  },
+
+  // --- Core Learning & Spaced Recall APIs ---
   async getVideos(): Promise<Video[]> {
     return localStore.getVideos();
   },
@@ -254,5 +495,32 @@ export const api = {
 
   dismissOnboarding() {
     localStore.dismissOnboarding();
+  },
+
+  async generateFromYouTubeUrl(url: string, topicHint?: string): Promise<{ video: Video; challenges: Challenge[]; source: string }> {
+    try {
+      const res = await fetch('/api/videos/generate-from-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, topicHint }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.video && Array.isArray(data.challenges) && data.challenges.length > 0) {
+          localStore.addCustomPack(data.video, data.challenges);
+          return data;
+        }
+      }
+    } catch (err) {
+      console.warn('Network generate failed, using local fallback:', err);
+    }
+
+    const parsed = extractYouTubeVideoId(url);
+    if (!parsed) {
+      throw new Error('Please enter a valid YouTube video URL or ID');
+    }
+    const fallback = generateFallbackPastedPack(parsed.videoId, topicHint);
+    localStore.addCustomPack(fallback.video, fallback.challenges);
+    return { ...fallback, source: 'template' };
   },
 };

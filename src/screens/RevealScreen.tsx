@@ -267,7 +267,8 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
               code={challenge.buggyCode}
               highlightLines={challenge.buggyLines}
               variant="bug"
-              filename="flawed_snippet.tsx"
+              filename={challenge.filename || 'flawed_snippet.tsx'}
+              fileType={challenge.fileType}
             />
           </div>
 
@@ -283,7 +284,8 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
               code={challenge.correctCode}
               highlightLines={challenge.buggyLines}
               variant="fix"
-              filename="corrected_snippet.tsx"
+              filename={challenge.filename ? `fixed_${challenge.filename}` : 'corrected_snippet.tsx'}
+              fileType={challenge.fileType}
             />
           </div>
         </div>

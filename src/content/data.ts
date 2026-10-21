@@ -34,6 +34,17 @@ export const CURATED_VIDEOS: Video[] = [
     description: 'Deep dive into React effect synchronization: solving stale closures in timers, memory leak cleanup on unmount, and infinite dependency cascades.',
     thumbnailUrl: 'https://img.youtube.com/vi/0ZJgIjIuY7U/hqdefault.jpg',
   },
+  {
+    id: 'aws-cloud-security',
+    title: 'AWS Cloud Security & IAM Policies',
+    channel: 'freeCodeCamp / AWS',
+    stack: 'backend',
+    youtubeId: 'k1RI5locZE4',
+    duration: '42m',
+    conceptCount: 2,
+    description: 'Review real-world cloud security configurations: catch IAM wildcard privilege escalations and unconstrained public SSH ingress in Terraform.',
+    thumbnailUrl: 'https://img.youtube.com/vi/k1RI5locZE4/hqdefault.jpg',
+  },
 ];
 
 export const CURATED_CHALLENGES: Challenge[] = [
@@ -46,6 +57,13 @@ export const CURATED_CHALLENGES: Challenge[] = [
     timestampSeconds: 1420,
     timestampFormatted: '23:40',
     difficulty: 'Beginner',
+    filename: 'Counter.tsx',
+    fileType: 'typescript',
+    hints: {
+      conceptNudge: 'React schedules state updates and evaluates them against the snapshot of the current render frame. Calling setCount(count + 1) twice in the same tick reads the same initial snapshot.',
+      videoTimestampSeconds: 1420,
+      inspectionClue: 'Inspect lines 6-7 inside handleIncrementTwice. How do you instruct React to chain updates against pending state?',
+    },
     buggyLines: [7],
     buggyCode: `function Counter() {
   const [count, setCount] = useState(0);
@@ -95,6 +113,13 @@ export const CURATED_CHALLENGES: Challenge[] = [
     timestampSeconds: 1980,
     timestampFormatted: '33:00',
     difficulty: 'Beginner',
+    filename: 'TodoList.tsx',
+    fileType: 'typescript',
+    hints: {
+      conceptNudge: 'When React reconciles dynamic collections, keys tell the engine which item in the virtual tree corresponds to each DOM node across renders.',
+      videoTimestampSeconds: 1980,
+      inspectionClue: 'Look at line 8: the <li> element returned by items.map() lacks a key attribute to preserve DOM identity.',
+    },
     buggyLines: [11],
     buggyCode: `interface TodoItem {
   id: string;
@@ -148,6 +173,13 @@ function TodoList({ items }: { items: TodoItem[] }) {
     timestampSeconds: 2540,
     timestampFormatted: '42:20',
     difficulty: 'Intermediate',
+    filename: 'MessageInbox.tsx',
+    fileType: 'typescript',
+    hints: {
+      conceptNudge: 'In JavaScript logical expressions, 0 && <Component /> evaluates to the number 0, not false. React renders numeric zeros directly into the DOM.',
+      videoTimestampSeconds: 2540,
+      inspectionClue: 'Look at line 8: {unreadMessages.length && ...} evaluates to 0 when the array is empty, which leaks a visible "0" on screen.',
+    },
     buggyLines: [8],
     buggyCode: `interface InboxProps {
   unreadMessages: string[];
@@ -193,6 +225,13 @@ function MessageInbox({ unreadMessages }: InboxProps) {
     timestampSeconds: 3120,
     timestampFormatted: '52:00',
     difficulty: 'Beginner',
+    filename: 'UserCard.tsx',
+    fileType: 'typescript',
+    hints: {
+      conceptNudge: 'Event handler attributes require a function reference or callback. Calling the function immediately with parentheses invokes it on every render.',
+      videoTimestampSeconds: 3120,
+      inspectionClue: 'Look at line 9: <button onClick={onDelete(userId)}> executes during component render instead of waiting for a click event.',
+    },
     buggyLines: [6],
     buggyCode: `interface UserCardProps {
   userId: string;
@@ -244,6 +283,13 @@ function UserCard({ userId, onDelete }: UserCardProps) {
     timestampSeconds: 340,
     timestampFormatted: '05:40',
     difficulty: 'Intermediate',
+    filename: 'syncUsers.ts',
+    fileType: 'typescript',
+    hints: {
+      conceptNudge: 'Array.prototype.forEach is synchronous and discards any returned promises. It does not await the asynchronous operations inside its callback.',
+      videoTimestampSeconds: 340,
+      inspectionClue: 'Look at lines 4-7: userIds.forEach(async ...) fires promises in the background and immediately moves to the following console.log.',
+    },
     buggyLines: [5],
     buggyCode: `async function syncDatabaseUsers(userIds: string[]) {
   console.log("Starting batch sync...");
@@ -287,6 +333,13 @@ function UserCard({ userId, onDelete }: UserCardProps) {
     timestampSeconds: 540,
     timestampFormatted: '09:00',
     difficulty: 'Beginner',
+    filename: 'metricsApi.ts',
+    fileType: 'typescript',
+    hints: {
+      conceptNudge: 'The Fetch API only rejects on network failures. Server errors (such as 404 Not Found or 500 Internal Server Error) resolve normally and require checking response.ok.',
+      videoTimestampSeconds: 540,
+      inspectionClue: 'Look at line 5: response.json() is called without inspecting response.ok or response.status.',
+    },
     buggyLines: [4],
     buggyCode: `async function loadDashboardMetrics() {
   try {
@@ -330,6 +383,13 @@ function UserCard({ userId, onDelete }: UserCardProps) {
     timestampSeconds: 680,
     timestampFormatted: '11:20',
     difficulty: 'Advanced',
+    filename: 'reportLoader.ts',
+    fileType: 'typescript',
+    hints: {
+      conceptNudge: 'Promise.all fails immediately if any single promise rejects. When independent tasks can succeed partially, Promise.allSettled avoids losing successful data.',
+      videoTimestampSeconds: 680,
+      inspectionClue: 'Look at line 6: Promise.all will abort all reports if one optional report fails.',
+    },
     buggyLines: [5],
     buggyCode: `async function loadBatchReports(reportIds: string[]) {
   // If one optional report has expired, we still need all other reports
@@ -368,6 +428,13 @@ function UserCard({ userId, onDelete }: UserCardProps) {
     timestampSeconds: 240,
     timestampFormatted: '04:00',
     difficulty: 'Intermediate',
+    filename: 'AutoSavingTimer.tsx',
+    fileType: 'typescript',
+    hints: {
+      conceptNudge: 'When an effect runs with an empty dependency array [], its callbacks close over the initial render variables. Setting state directly reads that frozen initial value.',
+      videoTimestampSeconds: 240,
+      inspectionClue: 'Look at line 7: setSeconds(seconds + 1) captures seconds as 0 forever. Use a functional updater instead.',
+    },
     buggyLines: [7],
     buggyCode: `function AutoSavingTimer() {
   const [seconds, setSeconds] = useState(0);
@@ -415,6 +482,13 @@ function UserCard({ userId, onDelete }: UserCardProps) {
     timestampSeconds: 430,
     timestampFormatted: '07:10',
     difficulty: 'Beginner',
+    filename: 'WindowWidthTracker.tsx',
+    fileType: 'typescript',
+    hints: {
+      conceptNudge: 'Effects that subscribe to DOM events or global window listeners must return a cleanup teardown callback so listeners do not accumulate when the component unmounts.',
+      videoTimestampSeconds: 430,
+      inspectionClue: 'Look at lines 6-8: window.addEventListener is called on mount, but the effect returns void instead of a cleanup function.',
+    },
     buggyLines: [7],
     buggyCode: `function WindowWidthTracker() {
   const [width, setWidth] = useState(window.innerWidth);
@@ -458,6 +532,13 @@ function UserCard({ userId, onDelete }: UserCardProps) {
     timestampSeconds: 660,
     timestampFormatted: '11:00',
     difficulty: 'Advanced',
+    filename: 'ProfileSummary.tsx',
+    fileType: 'typescript',
+    hints: {
+      conceptNudge: 'When an effect updates state that is listed in its own dependency array, each update causes a new render which triggers the effect again forever.',
+      videoTimestampSeconds: 660,
+      inspectionClue: 'Look at lines 6-7: setHistory updates history, while [history] is present in the dependency array.',
+    },
     buggyLines: [6],
     buggyCode: `interface ProfileProps {
   user: { name: string; visits: number };
@@ -499,5 +580,110 @@ function ProfileSummary({ user }: ProfileProps) {
   return <div>Logged visits: {history.length}</div>;
 }`,
     takeaway: 'Never set state inside an effect that unconditionally depends on that same state. If state can be derived from props, compute it during rendering instead.',
+  },
+
+  // --- AWS Cloud Security & IAM Policies ---
+  {
+    id: 'aws-iam-wildcard-escalation',
+    videoId: 'aws-cloud-security',
+    concept: 'AWS IAM: Wildcard Privilege Escalation',
+    chapter: 'Least Privilege & Resource Scoping',
+    timestampSeconds: 240,
+    timestampFormatted: '04:00',
+    difficulty: 'Intermediate',
+    filename: 'iam-policy.json',
+    fileType: 'json',
+    hints: {
+      conceptNudge: 'The principle of least privilege requires granting only the specific actions and bucket resources needed for an application role.',
+      videoTimestampSeconds: 240,
+      inspectionClue: 'Look at line 7: Action is set to "s3:*" and Resource is "*", granting total administrative control across all S3 buckets.',
+    },
+    buggyLines: [7],
+    buggyCode: `{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowAppBucketReadWrite",
+      "Effect": "Allow",
+      "Action": "s3:*",
+      "Resource": "*"
+    }
+  ]
+}`,
+    fixOptions: [
+      'Scope Action to ["s3:GetObject", "s3:PutObject"] and restrict Resource to specific bucket ARN',
+      'Change Effect to "Conditional" and add MFA validation',
+      'Set "Principal": "arn:aws:iam::*:root" inside the statement',
+      'Replace Version with "2024-01-01" to automatically enforce least privilege',
+    ],
+    correctOption: 0,
+    explanation: 'Granting "Action": "s3:*" on "Resource": "*" allows any compromised compute instance or app credential to delete all organizational buckets, alter ACLs, disable object locking, and read confidential records. Policies must explicitly declare only required actions (like s3:GetObject and s3:PutObject) against exact target ARNs (arn:aws:s3:::app-storage-bucket/*).',
+    correctCode: `{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowAppBucketReadWrite",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::app-storage-bucket/*"
+    }
+  ]
+}`,
+    takeaway: 'Never commit "Action": "s3:*" or "Resource": "*" in application IAM policies. Explicitly bound actions and restrict to named bucket ARNs.',
+  },
+  {
+    id: 'aws-terraform-security-group',
+    videoId: 'aws-cloud-security',
+    concept: 'Terraform: Global Public SSH Ingress Exposure',
+    chapter: 'VPC Security Groups & Ingress CIDR Rules',
+    timestampSeconds: 495,
+    timestampFormatted: '08:15',
+    difficulty: 'Advanced',
+    filename: 'main.tf',
+    fileType: 'terraform',
+    hints: {
+      conceptNudge: 'Administrative ports such as SSH (port 22) must never be open to the public internet (0.0.0.0/0). Use bastion hosts, corporate VPN CIDRs, or AWS SSM.',
+      videoTimestampSeconds: 495,
+      inspectionClue: 'Look at line 7 in the ingress block for port 22: cidr_blocks is set to ["0.0.0.0/0"].',
+    },
+    buggyLines: [7],
+    buggyCode: `resource "aws_security_group" "bastion_ingress" {
+  name        = "bastion-sg"
+  description = "Security group for production bastion host"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "SSH administrative access"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}`,
+    fixOptions: [
+      'Restrict cidr_blocks to specific trusted corporate IP range (e.g., ["198.51.100.0/24"]) or use AWS Systems Manager (SSM)',
+      'Change protocol from "tcp" to "udp" to bypass internet scanning bots',
+      'Increase to_port to 2222 to provide security through obscurity',
+      'Set egress { from_port = 0, to_port = 0, protocol = "-1" } to cancel public ingress',
+    ],
+    correctOption: 0,
+    explanation: 'Exposing port 22 to 0.0.0.0/0 invites automated brute-force attacks and credential stuffing across the entire Internet. Production cloud architectures restrict management ports to an enterprise VPN CIDR block, or eliminate inbound SSH altogether in favor of AWS Systems Manager Session Manager (SSM), which requires no open inbound ports or public IP addresses.',
+    correctCode: `resource "aws_security_group" "bastion_ingress" {
+  name        = "bastion-sg"
+  description = "Security group for production bastion host"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "SSH restricted to trusted corporate VPN CIDR"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["198.51.100.0/24"]
+  }
+}`,
+    takeaway: 'Never open port 22 (SSH) or port 3389 (RDP) to 0.0.0.0/0 in Terraform security groups. Always restrict CIDRs to trusted subnets or adopt AWS SSM.',
   },
 ];

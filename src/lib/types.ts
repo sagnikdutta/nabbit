@@ -2,12 +2,13 @@ export interface Video {
   id: string;
   title: string;
   channel: string;
-  stack: 'react' | 'javascript' | 'backend';
+  stack: 'react' | 'javascript' | 'backend' | 'typescript' | 'fullstack' | string;
   youtubeId: string;
   duration: string;
   conceptCount: number;
   description: string;
   thumbnailUrl: string;
+  isUserCustom?: boolean;
 }
 
 export interface Challenge {
@@ -25,6 +26,13 @@ export interface Challenge {
   explanation: string;
   correctCode: string;
   takeaway: string;
+  filename?: string;
+  fileType?: 'json' | 'terraform' | 'dockerfile' | 'typescript' | 'javascript' | 'python' | 'yaml';
+  hints?: {
+    conceptNudge: string;
+    videoTimestampSeconds?: number;
+    inspectionClue: string;
+  };
 }
 
 export interface Attempt {
@@ -53,4 +61,26 @@ export interface RecallStats {
   atRiskCount: number;
   masteredCount: number; // intervals >= 14
   simulatedOffsetDays: number;
+}
+
+export interface UserAccount {
+  id: string;
+  email: string;
+  phoneNumber: string;
+  phoneCountryCode: string;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  createdAt: number;
+  emailVerificationSentAt?: number;
+  phoneVerificationSentAt?: number;
+  demoVerificationCodes?: {
+    emailCode: string;
+    phoneCode: string;
+  };
+}
+
+export interface AuthResponse {
+  user: UserAccount;
+  token?: string;
+  backgroundNotice: string;
 }

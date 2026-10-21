@@ -7,6 +7,7 @@ import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { RevealScreen } from './RevealScreen';
 import { ConceptTimeline } from '../components/ConceptTimeline';
+import { ConceptHintDrawer } from '../components/ConceptHintDrawer';
 import { ArrowLeft, CheckCircle, HelpCircle, AlertTriangle, ShieldCheck, Target, X } from 'lucide-react';
 
 export interface AttemptResult {
@@ -46,6 +47,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [phase, setPhase] = useState<'answering' | 'revealed'>('answering');
   const [result, setResult] = useState<AttemptResult | null>(null);
+  const [cueTimestamp, setCueTimestamp] = useState<{ seconds: number; label: string } | null>(null);
 
   // Keyboard shortcut support (1-4 and Enter) — only while answering
   useEffect(() => {
@@ -72,6 +74,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
     setPhase('answering');
     setResult(null);
     setIsSubmitting(false);
+    setCueTimestamp(null);
   }, [challenge.id]);
 
   const handleSubmit = async () => {
@@ -192,6 +195,8 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
             chapterTitle={challenge.chapter}
             videoTitle={video.title}
             channel={video.channel}
+            activeCueSeconds={cueTimestamp?.seconds}
+            activeCueLabel={cueTimestamp?.label}
           />
 
           {/* Concept Briefing Card */}
@@ -243,9 +248,19 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
               code={challenge.buggyCode}
               highlightLines={challenge.buggyLines}
               variant="bug"
-              filename="ComponentUnderTest.tsx"
+              filename={challenge.filename || 'ComponentUnderTest.tsx'}
+              fileType={challenge.fileType}
             />
           </div>
+
+          {/* 2-Stage Hint Section with Video Cueing */}
+          <ConceptHintDrawer
+            challenge={challenge}
+            youtubeId={video.youtubeId}
+            onCueVideo={(seconds, formatted) => {
+              setCueTimestamp({ seconds, label: `Hint (${formatted})` });
+            }}
+          />
 
           {/* Fix Options (MCQ) */}
           <div className="space-y-3 pt-2">

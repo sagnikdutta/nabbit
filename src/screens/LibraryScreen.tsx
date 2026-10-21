@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Video, Challenge, RecallItem, RecallStats } from '../lib/types';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
-import { Play, CheckCircle2, ArrowRight, ShieldCheck, Sparkles, BookOpen, Flame, Clock } from 'lucide-react';
+import { YouTubeImportCard } from '../components/YouTubeImportCard';
+import { Play, CheckCircle2, ArrowRight, ShieldCheck, Sparkles, BookOpen, Flame, Clock, Youtube } from 'lucide-react';
 
 export interface LibraryScreenProps {
   videos: Video[];
@@ -12,6 +13,8 @@ export interface LibraryScreenProps {
   userName?: string;
   onSelectVideo: (videoId: string) => void;
   onSelectChallenge: (challengeId: string) => void;
+  onImportYouTube: (url: string, topicHint?: string) => Promise<{ video: Video; challenges: Challenge[]; source: string }>;
+  onRefreshData?: () => Promise<void>;
 }
 
 export const LibraryScreen: React.FC<LibraryScreenProps> = ({
@@ -22,8 +25,10 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   userName,
   onSelectVideo,
   onSelectChallenge,
+  onImportYouTube,
+  onRefreshData,
 }) => {
-  const [selectedStack, setSelectedStack] = useState<'all' | 'react' | 'javascript'>('all');
+  const [selectedStack, setSelectedStack] = useState<'all' | 'react' | 'javascript' | 'custom'>('all');
   const [selectedDifficulty, setSelectedDifficulty] =
     useState<'all' | 'Beginner' | 'Intermediate' | 'Advanced'>('all');
 
@@ -43,9 +48,14 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         (selectedDifficulty === 'all' || c.difficulty === selectedDifficulty)
     );
 
-  const filteredVideos = (selectedStack === 'all'
-    ? videos
-    : videos.filter(v => v.stack === selectedStack)
+  const customVideosCount = videos.filter(v => v.isUserCustom).length;
+
+  const filteredVideos = (
+    selectedStack === 'all'
+      ? videos
+      : selectedStack === 'custom'
+      ? videos.filter(v => v.isUserCustom)
+      : videos.filter(v => v.stack === selectedStack)
   ).filter(v => challengesFor(v.id).length > 0);
 
   const DIFFICULTIES: ('all' | 'Beginner' | 'Intermediate' | 'Advanced')[] = [
@@ -140,12 +150,25 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         </section>
       )}
 
+      {/* YouTube URL Pasting & AI Drill Generator */}
+      <YouTubeImportCard
+        onImport={onImportYouTube}
+        onLaunchChallenge={onSelectChallenge}
+        onSuccess={async () => {
+          if (onRefreshData) await onRefreshData();
+        }}
+      />
+
       {/* Filter Tabs & Counter */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-[var(--color-border)] pb-4">
         <div>
-          <h2 className="text-lg font-bold text-[var(--color-text)]">Curated Video Packs</h2>
+          <h2 className="text-lg font-bold text-[var(--color-text)]">
+            {selectedStack === 'custom' ? 'Your Generated Tutorials' : 'Curated Video Packs'}
+          </h2>
           <p className="text-xs text-[var(--color-muted)]">
-            Hand-verified drills extracted from top community tutorials
+            {selectedStack === 'custom'
+              ? 'Drills synthesized from your pasted YouTube developer tutorials'
+              : 'Hand-verified drills extracted from top community tutorials'}
           </p>
         </div>
 
@@ -170,7 +193,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                   : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
               }`}
             >
-              React (2)
+              React ({videos.filter(v => v.stack === 'react' && !v.isUserCustom).length})
             </button>
             <button
               onClick={() => setSelectedStack('javascript')}
@@ -180,8 +203,21 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                   : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
               }`}
             >
-              JavaScript (1)
+              JavaScript ({videos.filter(v => v.stack === 'javascript' && !v.isUserCustom).length})
             </button>
+            {customVideosCount > 0 && (
+              <button
+                onClick={() => setSelectedStack('custom')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-[var(--radius-sm)] transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  selectedStack === 'custom'
+                    ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-[var(--shadow-sm)]'
+                    : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
+                }`}
+              >
+                <Youtube className="w-3.5 h-3.5 text-red-500 fill-red-500" />
+                <span>Pasted ({customVideosCount})</span>
+              </button>
+            )}
           </div>
 
           {/* Difficulty filter (N4) — find a winnable level */}
@@ -238,8 +274,15 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                 {/* Video Header & Meta */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs text-[var(--color-muted)] font-mono">
-                    <span>{video.channel}</span>
-                    <span className="tabular-nums">{video.duration}</span>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span>{video.channel}</span>
+                      {video.isUserCustom && (
+                        <span className="text-[10px] font-mono font-semibold text-red-600 dark:text-red-400 bg-red-500/10 px-1.5 py-0.2 rounded-[var(--radius-sm)] border border-red-500/20">
+                          Pasted
+                        </span>
+                      )}
+                    </div>
+                    <span className="tabular-nums shrink-0">{video.duration}</span>
                   </div>
 
                   <h3 className="text-base font-bold text-[var(--color-text)] group-hover:text-[var(--color-accent)] transition-colors">
@@ -338,35 +381,18 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         })}
       </div>
 
-      {/* Nabbit Pro preview (N7) — premium entry + roadmap, no transactions */}
-      <section className="rounded-[var(--radius)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-subtle)] p-5 space-y-3">
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text)]">
+      {/* Nabbit AI Video Generator & Extensibility */}
+      <section className="rounded-[var(--radius)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-subtle)] p-5 space-y-2 text-center">
+        <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text)]">
           <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-          <span>Nabbit Pro</span>
-          <span className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-[var(--color-accent-weak)] text-[var(--color-accent)] text-[10px] font-mono uppercase tracking-wide">
-            Coming soon
+          <span>YouTube URL Import Active</span>
+          <span className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-[var(--color-good-weak)] text-[var(--color-good-hover)] text-[10px] font-mono uppercase tracking-wide font-bold">
+            Live
           </span>
         </div>
 
-        {/* Paste-any-video auto-generation (premium entry, disabled for MVP) */}
-        <div className="flex flex-col sm:flex-row gap-2">
-          <input
-            type="url"
-            disabled
-            placeholder="Paste any YouTube tutorial URL to auto-generate drills…"
-            aria-label="Paste a YouTube URL to auto-generate drills (Pro, coming soon)"
-            className="flex-1 min-w-0 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-muted)] disabled:cursor-not-allowed"
-          />
-          <Button size="sm" variant="secondary" disabled className="shrink-0 justify-center">
-            Generate drills
-          </Button>
-        </div>
-
-        <p className="text-xs text-[var(--color-muted)] leading-relaxed">
-          Pro unlocks auto-generation from any video, more judgment formats (predict-output,
-          spot-the-flaw, trade-off), extra stacks and a mastery dashboard.{' '}
-          <span className="text-[var(--color-text)] font-medium">For teams:</span> drills on your
-          own codebase and a shared dashboard to verify your devs' code-review judgment.
+        <p className="text-xs text-[var(--color-muted)] max-w-xl mx-auto leading-relaxed">
+          Paste any developer screencast or tutorial URL above. Nabbit synthesizes realistic code review drills with planted bugs, verified fixes, and automated Ebbinghaus spaced-recall resurfacing.
         </p>
       </section>
     </div>

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ExternalLink, Play, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ExternalLink, Play, RotateCcw, Bookmark } from 'lucide-react';
 
 export interface VideoPlayerProps {
   youtubeId: string;
@@ -8,6 +8,8 @@ export interface VideoPlayerProps {
   chapterTitle: string;
   videoTitle: string;
   channel: string;
+  activeCueSeconds?: number | null;
+  activeCueLabel?: string | null;
 }
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -17,15 +19,34 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   chapterTitle,
   videoTitle,
   channel,
+  activeCueSeconds,
+  activeCueLabel,
 }) => {
+  const [currentStart, setCurrentStart] = useState(timestampSeconds);
   const [key, setKey] = useState(0);
 
+  // Update starting time if activeCueSeconds is provided
+  useEffect(() => {
+    if (typeof activeCueSeconds === 'number') {
+      setCurrentStart(activeCueSeconds);
+      setKey(prev => prev + 1);
+    } else {
+      setCurrentStart(timestampSeconds);
+    }
+  }, [activeCueSeconds, timestampSeconds]);
+
   const resetToTimestamp = () => {
+    setCurrentStart(timestampSeconds);
     setKey(prev => prev + 1);
   };
 
-  const embedUrl = `https://www.youtube-nocookie.com/embed/${youtubeId}?start=${timestampSeconds}&autoplay=0&rel=0&modestbranding=1`;
-  const watchUrl = `https://www.youtube.com/watch?v=${youtubeId}&t=${timestampSeconds}s`;
+  const isCuedToHint = typeof activeCueSeconds === 'number' && activeCueSeconds !== timestampSeconds;
+  const minutes = Math.floor(currentStart / 60);
+  const seconds = currentStart % 60;
+  const currentFormatted = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${youtubeId}?start=${currentStart}&autoplay=1&rel=0&modestbranding=1`;
+  const watchUrl = `https://www.youtube.com/watch?v=${youtubeId}&t=${currentStart}s`;
 
   return (
     <div className="rounded-[var(--radius)] overflow-hidden border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] flex flex-col">
@@ -35,7 +56,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] shrink-0" />
           <span className="font-semibold text-[var(--color-text)] truncate">{chapterTitle}</span>
           <span className="text-[var(--color-muted)]">·</span>
-          <span className="font-mono text-[var(--color-muted)] tabular-nums">{timestampFormatted}</span>
+          <span className="font-mono text-[var(--color-muted)] tabular-nums">{currentFormatted}</span>
+          {isCuedToHint && (
+            <span className="flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--color-accent-weak)] text-[var(--color-accent)] font-semibold shrink-0">
+              <Bookmark className="w-2.5 h-2.5" />
+              <span>{activeCueLabel || 'Hint Moment'}</span>
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -43,11 +70,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             type="button"
             onClick={resetToTimestamp}
             className="flex items-center gap-1 text-[11px] text-[var(--color-muted)] hover:text-[var(--color-text)] px-2 py-0.5 rounded-[var(--radius-sm)] hover:bg-[var(--color-border)] transition-colors cursor-pointer"
-            title="Reset video to concept timestamp"
-            aria-label={`Cue video to the concept moment at ${timestampFormatted}`}
+            title="Reset video to original chapter timestamp"
+            aria-label={`Reset video to original timestamp at ${timestampFormatted}`}
           >
             <RotateCcw className="w-3 h-3" aria-hidden="true" />
-            <span className="hidden sm:inline">Cue Moment</span>
+            <span className="hidden sm:inline">Reset Timestamp</span>
           </button>
           <a
             href={watchUrl}
@@ -84,7 +111,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
         <div className="flex items-center gap-1 text-[11px] text-[var(--color-accent)] font-medium shrink-0 ml-2">
           <Play className="w-3 h-3 fill-current" />
-          <span>Sync Chapter</span>
+          <span>Synced to {currentFormatted}</span>
         </div>
       </div>
     </div>

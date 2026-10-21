@@ -7,16 +7,29 @@ export interface CodeBlockProps {
   variant?: 'bug' | 'fix' | 'neutral';
   showLineNumbers?: boolean;
   filename?: string;
+  fileType?: string;
   onLineClick?: (lineNum: number) => void;
   selectedLine?: number | null;
 }
 
-// Tokenize a single line of JS/TS/JSX code into semantic tokens
+// Tokenize a single line of code (TS, JS, JSON, Terraform HCL, Dockerfile, Python)
 function highlightSyntax(line: string): React.ReactNode[] {
   if (!line) return ['\n'];
 
-  // Check for line comments
-  const commentIndex = line.indexOf('//');
+  // Check for line comments: '//' or '#'
+  // Note: ensure '#' isn't part of a hex color inside quotes if possible
+  const doubleSlash = line.indexOf('//');
+  const hashIdx = line.indexOf('#');
+
+  let commentIndex = -1;
+  if (doubleSlash !== -1 && hashIdx !== -1) {
+    commentIndex = Math.min(doubleSlash, hashIdx);
+  } else if (doubleSlash !== -1) {
+    commentIndex = doubleSlash;
+  } else if (hashIdx !== -1) {
+    commentIndex = hashIdx;
+  }
+
   if (commentIndex !== -1) {
     const before = line.slice(0, commentIndex);
     const comment = line.slice(commentIndex);
@@ -31,8 +44,8 @@ function highlightSyntax(line: string): React.ReactNode[] {
 
 function tokenizeLine(text: string): React.ReactNode[] {
   const tokens: React.ReactNode[] = [];
-  // Regex to match strings, keywords, numbers, JSX tags, and punctuation
-  const tokenRegex = /(".*?"|'.*?'|`.*?`|\b(?:function|const|let|var|return|if|else|async|await|try|catch|throw|interface|type|new|from|import|export|default|null|undefined|true|false)\b|\b(?:useState|useEffect|useRef|useMemo|useCallback|setInterval|clearInterval|addEventListener|removeEventListener|fetch|map|forEach|push|slice|filter|json|log|error|all|allSettled)\b|\b\d+\b|<\/?[A-Z][a-zA-Z0-9]*|<\/?[a-z]+|[{}()[\];:,.<>+=!&|?-]|\s+|[a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+  // Regex to match strings, keywords, numbers, directives, and punctuation
+  const tokenRegex = /(<!--.*?-->|".*?"|'.*?'|`.*?`|\b(?:function|const|let|var|return|if|else|async|await|try|catch|throw|interface|type|new|from|import|export|default|null|undefined|true|false)\b|\b(?:FROM|RUN|COPY|ADD|WORKDIR|USER|EXPOSE|ENV|ENTRYPOINT|CMD|ARG|VOLUME|AS)\b|\b(?:resource|data|provider|variable|output|locals|module|terraform|source|ingress|egress|cidr_blocks|protocol|from_port|to_port|tags)\b|\b(?:useState|useEffect|useRef|useMemo|useCallback|setInterval|clearInterval|addEventListener|removeEventListener|fetch|map|forEach|push|slice|filter|json|log|error|all|allSettled)\b|\b\d+\b|<\/?[A-Z][a-zA-Z0-9]*|<\/?[a-z]+|[{}()[\];:,.<>+=!&|?-]|\s+|[a-zA-Z_$][a-zA-Z0-9_$-]*)/g;
 
   let match;
   let keyIdx = 0;
@@ -42,6 +55,7 @@ function tokenizeLine(text: string): React.ReactNode[] {
     keyIdx++;
 
     if (/^["'`]/.test(token)) {
+      // Highlight JSON keys differently from string values if followed by ':'
       tokens.push(<span key={keyIdx} className="tok-str">{token}</span>);
     } else if (
       /^(?:function|const|let|var|return|if|else|async|await|try|catch|throw|interface|type|new|from|import|export|default|null|undefined|true|false)$/.test(
@@ -49,6 +63,15 @@ function tokenizeLine(text: string): React.ReactNode[] {
       )
     ) {
       tokens.push(<span key={keyIdx} className="tok-kw">{token}</span>);
+    } else if (/^(?:FROM|RUN|COPY|ADD|WORKDIR|USER|EXPOSE|ENV|ENTRYPOINT|CMD|ARG|VOLUME|AS)$/.test(token)) {
+      // Dockerfile directives
+      tokens.push(<span key={keyIdx} className="tok-kw font-bold">{token}</span>);
+    } else if (/^(?:resource|data|provider|variable|output|locals|module|terraform|source)$/.test(token)) {
+      // Terraform block headers
+      tokens.push(<span key={keyIdx} className="tok-kw font-semibold">{token}</span>);
+    } else if (/^(?:ingress|egress|cidr_blocks|protocol|from_port|to_port|tags)$/.test(token)) {
+      // Terraform common attributes
+      tokens.push(<span key={keyIdx} className="tok-fn">{token}</span>);
     } else if (
       /^(?:useState|useEffect|useRef|useMemo|useCallback|setInterval|clearInterval|addEventListener|removeEventListener|fetch|map|forEach|push|slice|filter|json|log|error|all|allSettled)$/.test(
         token
@@ -79,6 +102,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   variant = 'neutral',
   showLineNumbers = true,
   filename,
+  fileType,
   onLineClick,
   selectedLine,
 }) => {
@@ -101,7 +125,16 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
             <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/30" />
             <div className="w-2.5 h-2.5 rounded-full bg-green-500/30" />
           </div>
-          {filename && <span className="font-mono text-[11px] text-[var(--code-text)] opacity-70 ml-2">{filename}</span>}
+          {filename && (
+            <span className="font-mono text-[11px] text-[var(--code-text)] opacity-80 ml-2 font-medium">
+              {filename}
+            </span>
+          )}
+          {fileType && (
+            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-white/10 text-[var(--code-text)] opacity-60">
+              {fileType}
+            </span>
+          )}
         </div>
 
         <button

@@ -15,12 +15,18 @@ import { LibraryScreen } from './screens/LibraryScreen';
 import { ChallengeScreen } from './screens/ChallengeScreen';
 import { RecallDashboardScreen } from './screens/RecallDashboardScreen';
 
-type Route = 'library' | 'challenge' | 'recall';
+import { AuthScreen } from './screens/AuthScreen';
+import { VerificationDrawer } from './components/VerificationDrawer';
+import { UserAccount } from './lib/types';
+import { ShieldCheck, X } from 'lucide-react';
+
+type Route = 'library' | 'challenge' | 'recall' | 'auth';
 
 // --- Hash router (B5): each screen has a shareable, refresh-safe URL ---
 // #/              → library
 // #/challenge/:id → a specific drill
 // #/recall        → spaced-recall dashboard
+// #/auth          → sign-in / sign-up screen
 function parseHash(): { route: Route; challengeId: string | null } {
   const h = window.location.hash.replace(/^#/, '');
   if (h.startsWith('/challenge/')) {
@@ -28,12 +34,14 @@ function parseHash(): { route: Route; challengeId: string | null } {
     return { route: 'challenge', challengeId: id || null };
   }
   if (h === '/recall') return { route: 'recall', challengeId: null };
+  if (h === '/auth' || h === '/signin' || h === '/signup') return { route: 'auth', challengeId: null };
   return { route: 'library', challengeId: null };
 }
 
 function hashFor(route: Route, challengeId?: string): string {
   if (route === 'challenge' && challengeId) return `#/challenge/${encodeURIComponent(challengeId)}`;
   if (route === 'recall') return '#/recall';
+  if (route === 'auth') return '#/auth';
   return '#/';
 }
 
@@ -98,6 +106,18 @@ export default function App() {
   // N6 — review reminders (browser notifications when due; opt-in, local only).
   const [remindersOn, setRemindersOn] = useState<boolean>(getRemindersEnabled);
   const [notifyPermission, setNotifyPermission] = useState<PermissionState>(getNotificationPermission);
+
+  // User Authentication & Background Verification State
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => api.getCurrentUser());
+  const [isVerificationOpen, setIsVerificationOpen] = useState(false);
+  const [backgroundNotice, setBackgroundNotice] = useState<string | null>(null);
+
+  // Subscribe to auth changes
+  useEffect(() => {
+    return api.onAuthChange(user => {
+      setCurrentUser(user);
+    });
+  }, []);
 
   // Apply data-theme attribute on root element
   useEffect(() => {
@@ -229,6 +249,39 @@ export default function App() {
     go(newRoute, param);
   };
 
+  const handleOpenAuth = () => {
+    go('auth');
+  };
+
+  const handleOpenVerification = () => {
+    setIsVerificationOpen(true);
+  };
+
+  const handleSignOut = () => {
+    api.signOut();
+    setBackgroundNotice(null);
+  };
+
+  const handleAuthSuccess = (user: UserAccount, notice?: string) => {
+    setCurrentUser(user);
+    if (notice) {
+      setBackgroundNotice(notice);
+    }
+    go('library');
+  };
+
+  const handleVerifyContact = async (type: 'email' | 'phone', code: string) => {
+    if (!currentUser) return;
+    const res = await api.verifyContact(currentUser.id, type, code);
+    setCurrentUser(res.user);
+  };
+
+  const handleResendVerification = async (type: 'email' | 'phone') => {
+    if (!currentUser) return;
+    const res = await api.resendVerification(currentUser.id, type);
+    setCurrentUser(res.user);
+  };
+
   const handleSelectVideo = (videoId: string) => {
     const videoChallenges = challenges.filter(c => c.videoId === videoId);
     if (videoChallenges.length > 0) {
@@ -284,6 +337,12 @@ export default function App() {
     setStats(dashboard.stats);
   };
 
+  const handleImportYouTube = async (url: string, topicHint?: string) => {
+    const result = await api.generateFromYouTubeUrl(url, topicHint);
+    await loadData();
+    return result;
+  };
+
   const handleResetData = async () => {
     await api.resetData();
     await loadData();
@@ -300,7 +359,9 @@ export default function App() {
   // Dynamic tab title (client-side) — helps shared links and bookmarks read well.
   useEffect(() => {
     const base = 'Nabbit — Code Review Drills & Spaced Recall';
-    if (route === 'challenge' && currentChallenge) {
+    if (route === 'auth') {
+      document.title = 'Sign In & Sign Up · Nabbit';
+    } else if (route === 'challenge' && currentChallenge) {
       document.title = `Catch the bug: ${currentChallenge.concept} · Nabbit`;
     } else if (route === 'recall') {
       document.title = `Spaced Recall · Nabbit`;
@@ -318,6 +379,17 @@ export default function App() {
         onSkip={handleSkipOnboarding}
       />
 
+      {/* Verification Drawer / Modal */}
+      {currentUser && (
+        <VerificationDrawer
+          user={currentUser}
+          isOpen={isVerificationOpen}
+          onClose={() => setIsVerificationOpen(false)}
+          onVerify={handleVerifyContact}
+          onResend={handleResendVerification}
+        />
+      )}
+
       {/* 3-Zone Top Navigation Bar */}
       <Navbar
         currentRoute={route}
@@ -326,10 +398,52 @@ export default function App() {
         dueCount={stats.dueCount}
         theme={theme}
         onToggleTheme={toggleTheme}
+        currentUser={currentUser}
+        onOpenAuth={handleOpenAuth}
+        onOpenVerification={handleOpenVerification}
+        onSignOut={handleSignOut}
       />
 
       {/* Main Content Viewport */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-6 pb-12">
+        {/* Background verification notice banner */}
+        {backgroundNotice && (
+          <div className="mb-6 rounded-[var(--radius)] border border-[var(--color-accent-border)] bg-[var(--color-accent-weak)] px-4 py-3 flex items-center justify-between gap-3 text-xs shadow-[var(--shadow-sm)]">
+            <div className="flex items-center gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-[var(--color-accent)] shrink-0" />
+              <p className="text-[var(--color-text)]">
+                {backgroundNotice}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleOpenVerification}
+                className="px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--color-accent)] text-white font-medium hover:opacity-90 transition-opacity cursor-pointer text-[11px]"
+              >
+                Enter Codes
+              </button>
+              <button
+                type="button"
+                onClick={() => setBackgroundNotice(null)}
+                aria-label="Dismiss banner"
+                className="text-[var(--color-muted)] hover:text-[var(--color-text)] cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {route === 'auth' && (
+          <AuthScreen
+            initialMode="signup"
+            onSuccess={handleAuthSuccess}
+            onCancel={() => handleNavigate('library')}
+            signUpFn={api.signUp}
+            signInFn={api.signIn}
+          />
+        )}
         {route === 'library' && (
           <LibraryScreen
             videos={videos}
@@ -339,6 +453,8 @@ export default function App() {
             userName={profileName}
             onSelectVideo={handleSelectVideo}
             onSelectChallenge={handleSelectChallenge}
+            onImportYouTube={handleImportYouTube}
+            onRefreshData={loadData}
           />
         )}
 
