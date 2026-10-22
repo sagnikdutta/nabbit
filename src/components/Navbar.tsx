@@ -10,7 +10,7 @@ export interface NavbarProps {
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   currentUser?: UserAccount | null;
-  onOpenAuth: () => void;
+  onOpenAuth: (mode?: 'signin' | 'signup') => void;
   onOpenVerification: () => void;
   onSignOut: () => void;
 }
@@ -178,7 +178,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     {currentUser.provider === 'supabase' && (
                       <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-mono mt-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        <span>Supabase Session</span>
+                        <span>Signed in</span>
                       </div>
                     )}
                   </div>
@@ -228,14 +228,23 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={onOpenAuth}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-sm)] bg-[var(--color-accent)] text-[var(--color-accent-ink)] hover:bg-[var(--color-accent-hover)] transition-colors text-xs font-semibold cursor-pointer shadow-[var(--shadow-sm)]"
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              <span>Sign In</span>
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => onOpenAuth('signin')}
+                className="text-xs font-medium text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenAuth('signup')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-sm)] bg-[var(--color-accent)] text-[var(--color-accent-ink)] hover:bg-[var(--color-accent-hover)] transition-colors text-xs font-semibold cursor-pointer shadow-[var(--shadow-sm)]"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Sign up free</span>
+              </button>
+            </div>
           )}
         </div>
       </div>

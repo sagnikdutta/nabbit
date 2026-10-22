@@ -14,6 +14,7 @@ export interface LibraryScreenProps {
   /** 'landing' = pitch page for visitors (trial); 'dashboard' = signed-in home. */
   mode?: 'landing' | 'dashboard';
   onGoToRecall?: () => void;
+  onSignUp?: () => void;
   onSelectVideo: (videoId: string) => void;
   onSelectChallenge: (challengeId: string) => void;
   onImportYouTube: (url: string, topicHint?: string) => Promise<{ video: Video; challenges: Challenge[]; source: string }>;
@@ -28,6 +29,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   userName,
   mode = 'landing',
   onGoToRecall,
+  onSignUp,
   onSelectVideo,
   onSelectChallenge,
   onImportYouTube,
@@ -186,14 +188,6 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       {!isDashboard && (
       <section className="relative rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 sm:p-8 shadow-[var(--shadow-sm)] overflow-hidden">
         <div className="max-w-2xl space-y-4">
-          <div className="flex items-center gap-2 text-xs text-[var(--color-muted)] font-mono">
-            <span>HelloPM Buildathon Entry</span>
-            <span>·</span>
-            <span>Cohort 52</span>
-            <span>·</span>
-            <span className="text-[var(--color-accent)] font-semibold">Nabbit MVP</span>
-          </div>
-
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--color-text)]">
             Train your code-review judgment on the dev videos you watch.
           </h1>
@@ -203,14 +197,24 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           </p>
 
           <div className="pt-2 flex flex-wrap items-center gap-3">
-            {nextChallenge && (
+            {onSignUp && (
               <Button
                 size="md"
                 variant="primary"
+                icon={<ArrowRight className="w-4 h-4 order-last" />}
+                onClick={onSignUp}
+              >
+                Create free account
+              </Button>
+            )}
+            {nextChallenge && (
+              <Button
+                size="md"
+                variant={onSignUp ? 'secondary' : 'primary'}
                 icon={<Play className="w-4 h-4 fill-current" />}
                 onClick={() => onSelectChallenge(nextChallenge.id)}
               >
-                Launch Quick Bug Hunt
+                Try a free bug hunt
               </Button>
             )}
 

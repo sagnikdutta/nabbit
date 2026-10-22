@@ -112,6 +112,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => api.getCurrentUser());
   const [isVerificationOpen, setIsVerificationOpen] = useState(false);
   const [backgroundNotice, setBackgroundNotice] = useState<string | null>(null);
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signup');
   // Set when a signed-out visitor finishes a trial challenge: sends them to sign up.
   const [trialResult, setTrialResult] = useState<{ correct: boolean; concept: string } | null>(null);
 
@@ -254,7 +255,8 @@ export default function App() {
     go(newRoute, param);
   };
 
-  const handleOpenAuth = () => {
+  const handleOpenAuth = (mode: 'signin' | 'signup' = 'signup') => {
+    setAuthMode(mode);
     go('auth');
   };
 
@@ -488,7 +490,8 @@ export default function App() {
 
         {activeRoute === 'auth' && (
           <AuthScreen
-            initialMode="signup"
+            key={authMode}
+            initialMode={authMode}
             trialResult={trialResult}
             onSuccess={handleAuthSuccess}
             onCancel={() => handleNavigate('library')}
@@ -505,6 +508,7 @@ export default function App() {
             userName={profileName}
             mode={currentUser ? 'dashboard' : 'landing'}
             onGoToRecall={() => handleNavigate('recall')}
+            onSignUp={() => handleOpenAuth('signup')}
             onSelectVideo={handleSelectVideo}
             onSelectChallenge={handleSelectChallenge}
             onImportYouTube={handleImportYouTube}

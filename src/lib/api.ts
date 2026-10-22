@@ -12,6 +12,30 @@ const LOCAL_STORAGE_KEY_AUTH = 'nabbit_auth_user_v1';
 const LOCAL_STORAGE_KEY_CUSTOM_VIDEOS = 'nabbit_custom_videos_v1';
 const LOCAL_STORAGE_KEY_CUSTOM_CHALLENGES = 'nabbit_custom_challenges_v1';
 
+/** Turn raw auth-provider errors into plain, product-voice messages (never name the provider). */
+function friendlyAuthError(message: string | undefined): string {
+  const m = (message || '').toLowerCase();
+  if (/email address .*invalid|unable to validate email|invalid email/.test(m)) {
+    return 'Please use a valid email address from a real domain (for example, name@gmail.com).';
+  }
+  if (/already (been )?registered|already exists/.test(m)) {
+    return 'An account with this email already exists. Try signing in instead.';
+  }
+  if (/invalid login credentials/.test(m)) {
+    return 'Incorrect email or password.';
+  }
+  if (/email not confirmed/.test(m)) {
+    return 'Please confirm your email first — check your inbox for the confirmation link.';
+  }
+  if (/rate limit|too many|security purposes/.test(m)) {
+    return 'Too many attempts. Please wait a minute and try again.';
+  }
+  if (/password/.test(m)) {
+    return 'Please choose a stronger password (at least 8 characters).';
+  }
+  return 'Something went wrong. Please try again.';
+}
+
 export interface Profile {
   name: string;
   onboarded: boolean;
@@ -349,8 +373,8 @@ export const api = {
       });
 
       if (error) {
-        console.error('[Nabbit] ❌ Supabase Auth error:', error.message);
-        throw new Error(error.message);
+        console.error('[Nabbit] sign-up error:', error.message);
+        throw new Error(friendlyAuthError(error.message));
       }
 
       if (data.user) {
@@ -363,8 +387,8 @@ export const api = {
           user: mapped,
           token: data.session?.access_token,
           backgroundNotice: data.session
-            ? 'Account created and authenticated via Supabase!'
-            : 'Account registered with Supabase! Verification email dispatched.',
+            ? 'Welcome to Nabbit! Your account is ready.'
+            : 'Account created! Check your email to confirm it.',
         };
       }
     }
@@ -433,8 +457,8 @@ export const api = {
       }
 
       if (result.error) {
-        console.error('[Nabbit] ❌ Supabase Auth error:', result.error.message);
-        throw new Error(result.error.message);
+        console.error('[Nabbit] sign-in error:', result.error.message);
+        throw new Error(friendlyAuthError(result.error.message));
       }
 
       if (result.data.user) {
@@ -508,7 +532,7 @@ export const api = {
           });
 
           if (secondTry.error) {
-            throw new Error(secondTry.error.message || error.message);
+            throw new Error('That verification code is invalid or has expired.');
           }
           if (secondTry.data.user) {
             const mapped = mapSupabaseUser(secondTry.data.user);
@@ -516,7 +540,7 @@ export const api = {
             localStore.setCurrentUser(mapped);
             return {
               success: true,
-              message: 'Email address verified via Supabase!',
+              message: 'Email address verified!',
               user: mapped,
             };
           }
@@ -526,7 +550,7 @@ export const api = {
           localStore.setCurrentUser(mapped);
           return {
             success: true,
-            message: 'Email address verified via Supabase!',
+            message: 'Email address verified!',
             user: mapped,
           };
         }
@@ -536,14 +560,14 @@ export const api = {
           token: cleanCode,
           type: 'sms',
         });
-        if (error) throw new Error(error.message);
+        if (error) throw new Error('That verification code is invalid or has expired.');
         if (data.user) {
           const mapped = mapSupabaseUser(data.user);
           mapped.provider = 'supabase';
           localStore.setCurrentUser(mapped);
           return {
             success: true,
-            message: 'Phone number verified via Supabase!',
+            message: 'Phone number verified!',
             user: mapped,
           };
         }
@@ -603,10 +627,10 @@ export const api = {
           type: 'signup',
           email: user.email,
         });
-        if (error) throw new Error(error.message);
+        if (error) throw new Error(friendlyAuthError(error.message));
         return {
           success: true,
-          message: 'Verification email resent via Supabase!',
+          message: 'Verification email resent!',
           user,
         };
       } else if (type === 'phone' && user?.phoneNumber) {
@@ -614,10 +638,10 @@ export const api = {
           type: 'sms',
           phone: user.phoneNumber,
         });
-        if (error) throw new Error(error.message);
+        if (error) throw new Error(friendlyAuthError(error.message));
         return {
           success: true,
-          message: 'SMS verification code resent via Supabase!',
+          message: 'SMS verification code resent!',
           user,
         };
       }
