@@ -3,7 +3,7 @@ import { Video, Challenge, RecallItem, RecallStats } from '../lib/types';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { YouTubeImportCard } from '../components/YouTubeImportCard';
-import { Play, CheckCircle2, ArrowRight, ShieldCheck, Sparkles, BookOpen, Flame, Clock, Youtube } from 'lucide-react';
+import { Play, CheckCircle2, ArrowRight, ShieldCheck, BookOpen, Flame, Clock, Youtube } from 'lucide-react';
 
 export interface LibraryScreenProps {
   videos: Video[];
@@ -11,6 +11,9 @@ export interface LibraryScreenProps {
   recallItems: RecallItem[];
   stats: RecallStats;
   userName?: string;
+  /** 'landing' = pitch page for visitors (trial); 'dashboard' = signed-in home. */
+  mode?: 'landing' | 'dashboard';
+  onGoToRecall?: () => void;
   onSelectVideo: (videoId: string) => void;
   onSelectChallenge: (challengeId: string) => void;
   onImportYouTube: (url: string, topicHint?: string) => Promise<{ video: Video; challenges: Challenge[]; source: string }>;
@@ -23,16 +26,21 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   recallItems,
   stats,
   userName,
+  mode = 'landing',
+  onGoToRecall,
   onSelectVideo,
   onSelectChallenge,
   onImportYouTube,
   onRefreshData,
 }) => {
+  const isDashboard = mode === 'dashboard';
   const [selectedStack, setSelectedStack] = useState<'all' | 'react' | 'javascript' | 'custom'>('all');
   const [selectedDifficulty, setSelectedDifficulty] =
     useState<'all' | 'Beginner' | 'Intermediate' | 'Advanced'>('all');
+  const [showImport, setShowImport] = useState(false);
 
-  const solvedIds = new Set(recallItems.map(i => i.challengeId));
+  // Visitors on the landing page are in trial mode: no saved progress to show.
+  const solvedIds = new Set(isDashboard ? recallItems.map(i => i.challengeId) : []);
 
   // N4 — the quick-start lands on a *winnable* first drill: an unsolved Beginner
   // one if available, else any unsolved, else the first drill.
@@ -50,13 +58,26 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
   const customVideosCount = videos.filter(v => v.isUserCustom).length;
 
+  const progressOf = (videoId: string) => challenges.filter(c => c.videoId === videoId && solvedIds.has(c.id)).length;
+
   const filteredVideos = (
     selectedStack === 'all'
       ? videos
       : selectedStack === 'custom'
       ? videos.filter(v => v.isUserCustom)
       : videos.filter(v => v.stack === selectedStack)
-  ).filter(v => challengesFor(v.id).length > 0);
+  )
+    .filter(v => challengesFor(v.id).length > 0)
+    // Dashboard: packs in progress float to the top.
+    .sort((a, b) => {
+      if (!isDashboard) return 0;
+      const inProgress = (v: Video) => {
+        const total = challenges.filter(c => c.videoId === v.id).length;
+        const done = progressOf(v.id);
+        return done > 0 && done < total ? 1 : 0;
+      };
+      return inProgress(b) - inProgress(a);
+    });
 
   const DIFFICULTIES: ('all' | 'Beginner' | 'Intermediate' | 'Advanced')[] = [
     'all',
@@ -67,7 +88,102 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
   return (
     <div className="space-y-8 pb-12">
-      {/* Hero Header */}
+      {/* Signed-in dashboard: what to do today, quiet stats, collapsed importer */}
+      {isDashboard && (
+        <>
+          <section className="space-y-4">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--color-text)]">
+              {userName ? `Welcome back, ${userName}` : 'Welcome back'}
+            </h1>
+
+            <div className="rounded-[var(--radius-lg)] border border-[var(--color-accent-border)] bg-[var(--color-accent-weak)] p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-[var(--radius-sm)] bg-[var(--color-accent)] text-white flex items-center justify-center shrink-0">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-[var(--color-text)]">
+                    {stats.dueCount > 0
+                      ? `${stats.dueCount} concept${stats.dueCount === 1 ? '' : 's'} due for review`
+                      : 'Nothing due — keep the streak going'}
+                  </div>
+                  <div className="text-xs text-[var(--color-muted)]">
+                    {stats.dueCount > 0
+                      ? 'A quick review now locks them in before you forget.'
+                      : nextChallenge
+                      ? `Up next: ${nextChallenge.concept}`
+                      : 'Pick a video below to start a bug hunt.'}
+                  </div>
+                </div>
+              </div>
+
+              {stats.dueCount > 0 && onGoToRecall ? (
+                <Button
+                  size="md"
+                  variant="primary"
+                  icon={<ArrowRight className="w-4 h-4 order-last" />}
+                  onClick={onGoToRecall}
+                >
+                  Start review
+                </Button>
+              ) : (
+                nextChallenge && (
+                  <Button
+                    size="md"
+                    variant="primary"
+                    icon={<Play className="w-4 h-4 fill-current" />}
+                    onClick={() => onSelectChallenge(nextChallenge.id)}
+                  >
+                    Continue
+                  </Button>
+                )
+              )}
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { icon: <Flame className="w-4 h-4 text-amber-500 fill-amber-500" />, value: stats.currentStreak, label: 'day streak' },
+                { icon: <CheckCircle2 className="w-4 h-4 text-[var(--color-good)]" />, value: stats.totalSolved, label: 'concepts solved' },
+                { icon: <ShieldCheck className="w-4 h-4 text-[var(--color-accent)]" />, value: stats.masteredCount, label: 'mastered' },
+              ].map(s => (
+                <div
+                  key={s.label}
+                  className="rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 flex items-center gap-3"
+                >
+                  {s.icon}
+                  <div className="leading-tight">
+                    <div className="text-sm font-bold text-[var(--color-text)] tabular-nums">{s.value}</div>
+                    <div className="text-[11px] text-[var(--color-muted)] font-mono">{s.label}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<Youtube className="w-4 h-4 text-red-500" />}
+              onClick={() => setShowImport(v => !v)}
+            >
+              {showImport ? 'Hide YouTube import' : 'Import from YouTube'}
+            </Button>
+            {showImport && (
+              <YouTubeImportCard
+                onImport={onImportYouTube}
+                onLaunchChallenge={onSelectChallenge}
+                onSuccess={async () => {
+                  if (onRefreshData) await onRefreshData();
+                }}
+              />
+            )}
+          </section>
+        </>
+      )}
+
+      {/* Hero Header (visitors / trial links only) */}
+      {!isDashboard && (
       <section className="relative rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 sm:p-8 shadow-[var(--shadow-sm)] overflow-hidden">
         <div className="max-w-2xl space-y-4">
           <div className="flex items-center gap-2 text-xs text-[var(--color-muted)] font-mono">
@@ -77,12 +193,6 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <span>·</span>
             <span className="text-[var(--color-accent)] font-semibold">Nabbit MVP</span>
           </div>
-
-          {userName && (
-            <p className="text-sm font-semibold text-[var(--color-accent)]">
-              Welcome back, {userName} 👋
-            </p>
-          )}
 
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--color-text)]">
             Train your code-review judgment on the dev videos you watch.
@@ -111,59 +221,13 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           </div>
         </div>
       </section>
-
-      {/* Returning-user progress strip (adaptive home) */}
-      {recallItems.length > 0 && nextChallenge && (
-        <section className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] px-5 py-4">
-          <div className="flex items-center gap-5">
-            <div className="flex items-center gap-2">
-              <Flame className="w-4 h-4 text-amber-500 fill-amber-500 shrink-0" />
-              <div className="leading-tight">
-                <div className="text-sm font-bold text-[var(--color-text)] tabular-nums">
-                  {stats.currentStreak}
-                </div>
-                <div className="text-[11px] text-[var(--color-muted)] font-mono">day streak</div>
-              </div>
-            </div>
-
-            <div className="w-px h-8 bg-[var(--color-border)]" />
-
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-[var(--color-accent)] shrink-0" />
-              <div className="leading-tight">
-                <div className="text-sm font-bold text-[var(--color-text)] tabular-nums">
-                  {stats.dueCount}
-                </div>
-                <div className="text-[11px] text-[var(--color-muted)] font-mono">due for review</div>
-              </div>
-            </div>
-          </div>
-
-          <Button
-            size="sm"
-            variant="secondary"
-            icon={<ArrowRight className="w-4 h-4 order-last" />}
-            onClick={() => onSelectChallenge(nextChallenge.id)}
-          >
-            Continue where you left off
-          </Button>
-        </section>
       )}
-
-      {/* YouTube URL Pasting & AI Drill Generator */}
-      <YouTubeImportCard
-        onImport={onImportYouTube}
-        onLaunchChallenge={onSelectChallenge}
-        onSuccess={async () => {
-          if (onRefreshData) await onRefreshData();
-        }}
-      />
 
       {/* Filter Tabs & Counter */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-[var(--color-border)] pb-4">
         <div>
           <h2 className="text-lg font-bold text-[var(--color-text)]">
-            {selectedStack === 'custom' ? 'Your Generated Tutorials' : 'Curated Video Packs'}
+            {selectedStack === 'custom' ? 'Your Generated Tutorials' : isDashboard ? 'Your Library' : 'Curated Video Packs'}
           </h2>
           <p className="text-xs text-[var(--color-muted)]">
             {selectedStack === 'custom'
@@ -294,7 +358,8 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                   {video.description}
                 </p>
 
-                {/* Progress bar */}
+                {/* Progress bar (signed-in only — visitors don't have saved progress) */}
+                {isDashboard && (
                 <div className="space-y-1.5 pt-1">
                   <div className="flex items-center justify-between text-xs font-mono">
                     <span className="text-[var(--color-muted)]">Progress</span>
@@ -309,6 +374,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                     />
                   </div>
                 </div>
+                )}
 
                 {/* Chapter Concept Tags (Zero-Pill List) */}
                 <div className="pt-2 border-t border-[var(--color-border-subtle)] space-y-2">
@@ -380,21 +446,6 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           );
         })}
       </div>
-
-      {/* Nabbit AI Video Generator & Extensibility */}
-      <section className="rounded-[var(--radius)] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-subtle)] p-5 space-y-2 text-center">
-        <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text)]">
-          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-          <span>YouTube URL Import Active</span>
-          <span className="px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-[var(--color-good-weak)] text-[var(--color-good-hover)] text-[10px] font-mono uppercase tracking-wide font-bold">
-            Live
-          </span>
-        </div>
-
-        <p className="text-xs text-[var(--color-muted)] max-w-xl mx-auto leading-relaxed">
-          Paste any developer screencast or tutorial URL above. Nabbit synthesizes realistic code review drills with planted bugs, verified fixes, and automated Ebbinghaus spaced-recall resurfacing.
-        </p>
-      </section>
     </div>
   );
 };

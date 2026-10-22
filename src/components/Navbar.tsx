@@ -92,6 +92,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden sm:inline">Bug Hunt Drill</span>
           </button>
 
+          {currentUser && (
           <button
             onClick={() => onNavigate('recall')}
             aria-current={currentRoute === 'recall' ? 'page' : undefined}
@@ -112,11 +113,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             )}
           </button>
+          )}
         </nav>
 
         {/* Zone 3: 1 primary action / status cluster */}
         <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
           {/* Streak indicator */}
+          {currentUser && (
           <div
             className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--color-surface-subtle)] border border-[var(--color-border)] text-xs font-mono font-medium text-[var(--color-text)] select-none"
             title="Consecutive successful review streak"
@@ -125,6 +128,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="tabular-nums">{activeStreak}</span>
             <span className="hidden sm:inline text-[var(--color-muted)] font-normal text-[11px]">streak</span>
           </div>
+          )}
 
           {/* Theme switcher */}
           <button
@@ -142,11 +146,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 type="button"
                 onClick={() => setProfileMenuOpen(!profileMenuOpen)}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-subtle)] text-xs text-[var(--color-text)] transition-colors cursor-pointer"
+                className="flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] hover:bg-[var(--color-surface)] text-[var(--color-text)] transition-colors cursor-pointer"
                 aria-expanded={profileMenuOpen}
+                aria-haspopup="true"
               >
-                <div className="w-6 h-6 rounded-full bg-[var(--color-accent-weak)] text-[var(--color-accent)] font-semibold flex items-center justify-center text-[11px]">
-                  {currentUser.email.slice(0, 1).toUpperCase()}
+                <div className="w-6 h-6 rounded-full bg-[var(--color-accent)] text-white flex items-center justify-center text-xs font-bold uppercase">
+                  {currentUser.email ? currentUser.email.charAt(0) : 'U'}
                 </div>
                 <span className="hidden md:inline font-mono text-[11px] max-w-[110px] truncate">
                   {currentUser.email.split('@')[0]}
@@ -170,6 +175,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <p className="text-[11px] font-mono text-[var(--color-muted)] truncate">
                       {currentUser.phoneNumber}
                     </p>
+                    {currentUser.provider === 'supabase' && (
+                      <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-mono mt-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span>Supabase Session</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Verification Status */}

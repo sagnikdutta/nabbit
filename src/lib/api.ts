@@ -2,6 +2,7 @@ import { Video, Challenge, Attempt, RecallItem, RecallStats, UserAccount, AuthRe
 import { CURATED_VIDEOS, CURATED_CHALLENGES } from '../content/data';
 import { calculateRecallSchedule, computeStats, getInitialSeedRecall, getSimulatedNow } from './recall';
 import { extractYouTubeVideoId, generateFallbackPastedPack } from './youtube';
+import { supabase, isSupabaseConfigured, mapSupabaseUser } from './supabase';
 
 const LOCAL_STORAGE_KEY_ITEMS = 'nabbit_recall_items_v1';
 const LOCAL_STORAGE_KEY_ATTEMPTS = 'nabbit_attempts_v1';
@@ -77,6 +78,39 @@ class LocalStore {
       const seed = getInitialSeedRecall();
       this.items = seed.items;
       this.attempts = seed.attempts;
+    }
+
+    // Initialize Supabase session synchronization if configured
+    if (supabase) {
+      supabase.auth.getSession().then(({ data }) => {
+        if (data.session?.user) {
+          const mapped = mapSupabaseUser(data.session.user);
+          mapped.provider = 'supabase';
+          this.currentUser = mapped;
+          this.save();
+          this.notifyAuthListeners();
+        }
+      }).catch(err => {
+        console.warn('[Nabbit Supabase] Initial session check notice:', err);
+      });
+
+      supabase.auth.onAuthStateChange((_event, session) => {
+        if (session?.user) {
+          const mapped = mapSupabaseUser(session.user);
+          mapped.provider = 'supabase';
+          this.currentUser = mapped;
+          if (!this.profile.name && mapped.email) {
+            const defaultName = mapped.email.split('@')[0].replace(/[._-]/g, ' ');
+            this.profile = { name: defaultName, onboarded: true };
+          }
+          this.save();
+          this.notifyAuthListeners();
+        } else if (this.currentUser?.provider === 'supabase') {
+          this.currentUser = null;
+          this.save();
+          this.notifyAuthListeners();
+        }
+      });
     }
   }
 
@@ -269,6 +303,10 @@ export const localStore = new LocalStore();
 
 export const api = {
   // --- Auth APIs ---
+  isSupabaseConfigured(): boolean {
+    return isSupabaseConfigured();
+  },
+
   getCurrentUser(): UserAccount | null {
     return localStore.getCurrentUser();
   },
@@ -277,7 +315,14 @@ export const api = {
     return localStore.onAuthChange(callback);
   },
 
-  signOut(): void {
+  async signOut(): Promise<void> {
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.warn('[Nabbit] Supabase signOut notice:', err);
+      }
+    }
     localStore.setCurrentUser(null);
   },
 
@@ -287,27 +332,65 @@ export const api = {
     phoneNumber: string,
     phoneCountryCode = '+1'
   ): Promise<AuthResponse> {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // 1. Primary: Use real Supabase Auth when credentials are provided
+    if (isSupabaseConfigured() && supabase) {
+      console.log('[Nabbit] 🚀 Supabase Auth: Registering user account with Supabase:', normalizedEmail);
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password,
+        options: {
+          data: {
+            phone_number: phoneNumber.trim(),
+            phone_country_code: phoneCountryCode,
+          },
+        },
+      });
+
+      if (error) {
+        console.error('[Nabbit] ❌ Supabase Auth error:', error.message);
+        throw new Error(error.message);
+      }
+
+      if (data.user) {
+        console.log('[Nabbit] ✅ Supabase Auth: User account created! UID:', data.user.id);
+        const mapped = mapSupabaseUser(data.user);
+        mapped.provider = 'supabase';
+        localStore.setCurrentUser(mapped);
+
+        return {
+          user: mapped,
+          token: data.session?.access_token,
+          backgroundNotice: data.session
+            ? 'Account created and authenticated via Supabase!'
+            : 'Account registered with Supabase! Verification email dispatched.',
+        };
+      }
+    }
+
+    // 2. Fallback: Backend or local session when Supabase credentials are not configured yet
     try {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, phoneNumber, phoneCountryCode }),
+        body: JSON.stringify({ email: normalizedEmail, password, phoneNumber, phoneCountryCode }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to create account.');
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || !contentType.includes('application/json')) {
+        throw new Error('fetch_fallback_required');
       }
 
+      const data = await res.json();
       localStore.setCurrentUser(data.user);
       return data;
-    } catch (err: any) {
-      console.warn('Backend signup notice, activating local session:', err);
+    } catch {
       const emailCode = Math.floor(100000 + Math.random() * 900000).toString();
       const phoneCode = Math.floor(100000 + Math.random() * 900000).toString();
       const fallbackUser: UserAccount = {
         id: `usr_local_${Date.now()}`,
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
         phoneNumber: phoneNumber.trim(),
         phoneCountryCode,
         emailVerified: false,
@@ -315,6 +398,7 @@ export const api = {
         createdAt: Date.now(),
         emailVerificationSentAt: Date.now(),
         phoneVerificationSentAt: Date.now(),
+        provider: 'local',
         demoVerificationCodes: {
           emailCode,
           phoneCode,
@@ -329,32 +413,73 @@ export const api = {
   },
 
   async signIn(identifier: string, password: string): Promise<AuthResponse> {
+    const cleanId = identifier.trim();
+
+    // 1. Primary: Use real Supabase Auth when credentials are provided
+    if (isSupabaseConfigured() && supabase) {
+      console.log('[Nabbit] 🔑 Supabase Auth: Authenticating with Supabase for:', cleanId);
+      const isEmail = cleanId.includes('@');
+      let result;
+      if (isEmail) {
+        result = await supabase.auth.signInWithPassword({
+          email: cleanId.toLowerCase(),
+          password,
+        });
+      } else {
+        result = await supabase.auth.signInWithPassword({
+          phone: cleanId,
+          password,
+        });
+      }
+
+      if (result.error) {
+        console.error('[Nabbit] ❌ Supabase Auth error:', result.error.message);
+        throw new Error(result.error.message);
+      }
+
+      if (result.data.user) {
+        console.log('[Nabbit] ✅ Supabase Auth: Authenticated! UID:', result.data.user.id);
+        const mapped = mapSupabaseUser(result.data.user);
+        mapped.provider = 'supabase';
+        localStore.setCurrentUser(mapped);
+
+        return {
+          user: mapped,
+          token: result.data.session?.access_token,
+          backgroundNotice: 'Signed in successfully!',
+        };
+      }
+    }
+
+    // 2. Fallback: Backend or cached local session
     try {
       const res = await fetch('/api/auth/signin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier, password }),
+        body: JSON.stringify({ identifier: cleanId, password }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Invalid email/phone or password.');
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || !contentType.includes('application/json')) {
+        throw new Error('fetch_fallback_required');
       }
 
+      const data = await res.json();
       localStore.setCurrentUser(data.user);
       return data;
     } catch (err: any) {
-      if (err.message && !err.message.includes('fetch')) {
-        throw err;
-      }
       const existing = localStore.getCurrentUser();
-      if (existing && (existing.email.toLowerCase() === identifier.toLowerCase() || existing.phoneNumber.includes(identifier))) {
+      if (
+        existing &&
+        (existing.email.toLowerCase() === cleanId.toLowerCase() ||
+          existing.phoneNumber.replace(/\D/g, '').endsWith(cleanId.replace(/\D/g, '')))
+      ) {
         return {
           user: existing,
-          backgroundNotice: 'Signed in from cached credentials.',
+          backgroundNotice: 'Signed in from cached local credentials.',
         };
       }
-      throw new Error('Unable to sign in. Please verify your credentials or sign up.');
+      throw new Error(err.message === 'fetch_fallback_required' ? 'Invalid email/phone or password.' : err.message || 'Unable to sign in. Please verify your credentials or sign up.');
     }
   },
 
@@ -363,32 +488,94 @@ export const api = {
     type: 'email' | 'phone',
     code: string
   ): Promise<{ success: boolean; message: string; user: UserAccount }> {
+    const cleanCode = code.trim();
+
+    // 1. Primary: Supabase OTP verification
+    if (isSupabaseConfigured() && supabase) {
+      const user = localStore.getCurrentUser();
+      if (type === 'email' && user?.email) {
+        const { data, error } = await supabase.auth.verifyOtp({
+          email: user.email,
+          token: cleanCode,
+          type: 'signup',
+        });
+
+        if (error) {
+          const secondTry = await supabase.auth.verifyOtp({
+            email: user.email,
+            token: cleanCode,
+            type: 'email',
+          });
+
+          if (secondTry.error) {
+            throw new Error(secondTry.error.message || error.message);
+          }
+          if (secondTry.data.user) {
+            const mapped = mapSupabaseUser(secondTry.data.user);
+            mapped.provider = 'supabase';
+            localStore.setCurrentUser(mapped);
+            return {
+              success: true,
+              message: 'Email address verified via Supabase!',
+              user: mapped,
+            };
+          }
+        } else if (data.user) {
+          const mapped = mapSupabaseUser(data.user);
+          mapped.provider = 'supabase';
+          localStore.setCurrentUser(mapped);
+          return {
+            success: true,
+            message: 'Email address verified via Supabase!',
+            user: mapped,
+          };
+        }
+      } else if (type === 'phone' && user?.phoneNumber) {
+        const { data, error } = await supabase.auth.verifyOtp({
+          phone: user.phoneNumber,
+          token: cleanCode,
+          type: 'sms',
+        });
+        if (error) throw new Error(error.message);
+        if (data.user) {
+          const mapped = mapSupabaseUser(data.user);
+          mapped.provider = 'supabase';
+          localStore.setCurrentUser(mapped);
+          return {
+            success: true,
+            message: 'Phone number verified via Supabase!',
+            user: mapped,
+          };
+        }
+      }
+    }
+
+    // 2. Fallback: Backend or local verification
     try {
       const res = await fetch('/api/auth/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, type, code }),
+        body: JSON.stringify({ userId, type, code: cleanCode }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || `Invalid ${type} verification code.`);
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || !contentType.includes('application/json')) {
+        throw new Error('fetch_fallback_required');
       }
 
+      const data = await res.json();
       localStore.setCurrentUser(data.user);
       return data;
-    } catch (err: any) {
-      if (err.message && !err.message.includes('fetch')) {
-        throw err;
-      }
+    } catch {
       const user = localStore.getCurrentUser();
       if (!user) throw new Error('No user session found.');
 
-      const expectedCode = type === 'email'
-        ? (user.demoVerificationCodes?.emailCode || '123456')
-        : (user.demoVerificationCodes?.phoneCode || '789012');
+      const expectedCode =
+        type === 'email'
+          ? user.demoVerificationCodes?.emailCode || '123456'
+          : user.demoVerificationCodes?.phoneCode || '789012';
 
-      if (code.trim() === expectedCode || code.trim() === '123456' || code.trim() === '789012') {
+      if (cleanCode === expectedCode || cleanCode === '123456' || cleanCode === '789012') {
         const updated = {
           ...user,
           [type === 'email' ? 'emailVerified' : 'phoneVerified']: true,
@@ -400,7 +587,7 @@ export const api = {
           user: updated,
         };
       }
-      throw new Error(`Invalid ${type} verification code. Please check your code.`);
+      throw new Error(`Invalid 6-digit ${type} verification code.`);
     }
   },
 
@@ -408,6 +595,35 @@ export const api = {
     userId: string,
     type: 'email' | 'phone'
   ): Promise<{ success: boolean; message: string; user: UserAccount }> {
+    // 1. Primary: Supabase resend
+    if (isSupabaseConfigured() && supabase) {
+      const user = localStore.getCurrentUser();
+      if (type === 'email' && user?.email) {
+        const { error } = await supabase.auth.resend({
+          type: 'signup',
+          email: user.email,
+        });
+        if (error) throw new Error(error.message);
+        return {
+          success: true,
+          message: 'Verification email resent via Supabase!',
+          user,
+        };
+      } else if (type === 'phone' && user?.phoneNumber) {
+        const { error } = await supabase.auth.resend({
+          type: 'sms',
+          phone: user.phoneNumber,
+        });
+        if (error) throw new Error(error.message);
+        return {
+          success: true,
+          message: 'SMS verification code resent via Supabase!',
+          user,
+        };
+      }
+    }
+
+    // 2. Fallback: Backend or local resend
     try {
       const res = await fetch('/api/auth/resend-verification', {
         method: 'POST',
@@ -415,14 +631,15 @@ export const api = {
         body: JSON.stringify({ userId, type }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || `Failed to resend ${type} verification code.`);
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || !contentType.includes('application/json')) {
+        throw new Error('fetch_fallback_required');
       }
 
+      const data = await res.json();
       localStore.setCurrentUser(data.user);
       return data;
-    } catch (err: any) {
+    } catch {
       const user = localStore.getCurrentUser();
       if (!user) throw new Error('No user session found.');
       const newCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -437,7 +654,7 @@ export const api = {
       localStore.setCurrentUser(updated);
       return {
         success: true,
-        message: `New ${type} verification code sent in background!`,
+        message: `New ${type} verification code dispatched in background!`,
         user: updated,
       };
     }
@@ -504,7 +721,8 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, topicHint }),
       });
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
         const data = await res.json();
         if (data.video && Array.isArray(data.challenges) && data.challenges.length > 0) {
           localStore.addCustomPack(data.video, data.challenges);

@@ -6,7 +6,7 @@
 > **Status (21 Oct):** MVP working locally. Phases 1–5 done. Shipped & verified in-browser:
 > B0, B1, B2, B3 (+ the N1 fix), B4, B5 (difficulty part), B7, plus Phase 6 polish.
 > Remaining buildable: B5 session-length, B6, B8 (all roadmap-tier). Operational: hosted deploy + demo recording.
-> Source of truth = **client localStorage**; deploys as a **static SPA** (no DB required yet).
+> Source of truth for **progress** = **client localStorage**; **identity + leads** live in **Supabase** (see "Accounts & leads — shipped 22 Oct" below). The SPA still deploys statically; Supabase is reached with the anon key + RLS.
 
 ---
 
@@ -15,7 +15,7 @@
 1. **Design is loosely coupled** — every visual token lives in `src/theme/tokens.css`; components use `var(--token)` only. Re-skin = swap the token file.
 2. **Deterministic core** — grading is `chosen === correctOption`. No sandbox, no LLM at request time.
 3. **Content is data** — challenges live in `src/content/data.ts`. New content ≠ new components.
-4. **One source of truth** — progress in the client (`localStore` → localStorage). Static SPA, no backend state to reset.
+4. **One source of truth per concern** — progress in the client (`localStore` → localStorage); accounts (`auth.users` + `public.users`) and leads (`public.leads`) in Supabase. Progress is not yet synced to Supabase (Phase 7).
 5. **Deploy early, stay deployable.**
 
 ---
@@ -26,12 +26,19 @@
 Browser (React + Vite SPA)  — source of truth
   theme/        tokens.css (Direction B) + base.css
   components/   Button, Card, Badge, CodeBlock, OptionCard, Navbar, VideoPlayer, TimeTravelBar, NameOnboarding, ConceptTimeline
-  screens/      Library, Challenge (+ inline Reveal), RecallDashboard
-  lib/          api (localStore, single source of truth), recall (scheduling + stats), reminders, types
-  routing/      hash router in App.tsx (#/, #/challenge/:id, #/recall) + ?dare= deep links
+  screens/      Library (landing for visitors / dashboard for members), Auth, Challenge (+ inline Reveal), RecallDashboard
+  lib/          api (localStore for progress), supabase (client + user mapping), leads (trial lead capture), recall (scheduling + stats), reminders, types
+  routing/      hash router in App.tsx (#/, #/challenge/:id, #/recall, #/auth) + ?dare= deep links; auth-aware (see below)
   content/      data.ts (curated videos + challenges)
-Express (server.ts) — OPTIONAL; mirrors logic, serves the SPA. Not required for state (see B0).
+Supabase — Auth + Postgres (RLS): auth.users, public.users, public.leads (+ lead_sharers view)
+Express (server.ts) — OPTIONAL; serves the SPA + per-challenge OG tags. Still contains legacy mock /api/auth/* routes (unused when Supabase is configured).
 ```
+
+### Routing by auth state
+| State | `#/` | `#/challenge/:id` | `#/recall` | `#/auth` |
+|---|---|---|---|---|
+| Signed out | Landing (pitch + packs) | **Public trial** — grades locally, saves nothing, then redirects to sign-up | → Landing | Sign-up / sign-in |
+| Signed in | Dashboard | Full (saved) | Yes | → Dashboard |
 
 Tech: React 19 · Vite · TS · Tailwind v4 + CSS tokens · localStorage · Gemini (offline authoring only, **not at runtime**) · static hosting (Vercel static / Render).
 
@@ -40,10 +47,19 @@ Tech: React 19 · Vite · TS · Tailwind v4 + CSS tokens · localStorage · Gemi
 ## Phases 1–5 — DONE ✅
 Scaffold · core loop · persistence + recall · library + nav · content (React + JS-async + useEffect packs).
 
+## Accounts & leads — shipped 22 Oct ✅ *(code complete; typechecks; not all browser-verified)*
+- **Supabase Auth** (email + password, phone as metadata) in `src/lib/supabase.ts` + `api.signUp/signIn/signOut`; falls back to local/mock auth when keys are missing.
+- **`0001_users.sql`** — `public.users` mirrors `auth.users` via triggers (insert → row, update → email/verified flags), RLS: users read/update only their own row; backfill included. ✅ verified (registration row + login confirmed).
+- **Auth-aware routing** (table above). Signed-out visitors get the landing page and public **trial** drills; finishing a trial drill → sign-up with a verdict-only banner; after sign-up they return to that drill.
+- **Signed-in dashboard** — `LibraryScreen mode="dashboard"`: Today card (N due → Start review, else Continue), 3 stats, in-progress packs first, collapsed YouTube import. Landing keeps the hero; the "YouTube URL Import Active" block and footer taglines were removed.
+- **`0002_leads.sql`** — `public.leads` (one row per visitor × challenge: visitor id, challenge id, UTM, referrer, completed/correct, converted user). No direct table access; written via `log_lead` / `complete_lead` / `claim_leads` RPCs (security definer).
+- **`0003_leads_sharer_ref.sql`** — adds `sharer_ref` + new `log_lead` signature + `lead_sharers` view. Share links now carry `utm_source=share&utm_medium=bug-dare&utm_campaign=dare-<id>&ref=<sha256(user id)[:10]>`.
+- ⬜ **Run `0002` and `0003`** in the nabbit Supabase project (0003 before using new share links) and re-test a trial link end to end.
+
 ## Recently shipped ✅ (all verified in-browser)
 - **B1 — inline reveal** (`phase: answering → revealed`, same-page; separate Reveal route dropped).
 - **B2 — real YouTube thumbnails** (`img.youtube.com/vi/<id>/hqdefault.jpg`; every `youtubeId` verified via oEmbed — the old useEffect id 404'd → real Web Dev Simplified video; real channels; cue timestamps clamped to runtime). Plus the returning-user progress strip (streak · due · continue).
-- **B3 — local name profile** (localStorage, skippable, no login wall). **N1 fix:** the prompt now appears *after the first attempt* (value before any gate), once; correct verdict personalizes to "Nice catch, {name}!".
+- **B3 — local name profile** (localStorage, skippable, no login wall) — *now largely superseded: signed-in users' names come from their email and trial users aren't saved.* **N1 fix:** the prompt now appears *after the first attempt* (value before any gate), once; correct verdict personalizes to "Nice catch, {name}!".
 - **B0 — one store** (localStorage is sole source of truth; `/api/*` state routes + double-write removed; `server.ts` only serves the SPA + `/api/health`).
 - **B4 — shareable bug-dare** — see the backlog item below for the as-built details.
 - **B5 (difficulty)** — level badge on drill chips + a difficulty filter in the Library; quick-start lands on a *winnable* (unsolved Beginner) drill. *(Session-length + adaptive still pending — see B5.)*
@@ -65,7 +81,7 @@ Scaffold · core loop · persistence + recall · library + nav · content (React
 ### B4 — Shareable bug-dare  *(Referral + Acquisition — highest growth ROI)* — DONE ✅
 As built (differs slightly from the original sketch):
 - Share CTA on the reveal using **`navigator.share`** (native sheet on mobile) with a **copy-link** fallback — instead of per-network LinkedIn/X/WhatsApp intent buttons.
-- **Deep link `?dare=<challengeId>`** (a server-readable query param, not `?c=`) opens that exact drill, then cleans to `#/challenge/:id`.
+- **Deep link `?dare=<challengeId>`** (a server-readable query param, not `?c=`) opens that exact drill, then cleans to `#/challenge/:id`. Links now also carry UTM tags + the sharer `ref` (see Accounts & leads).
 - Pre-written copy: *"I just caught a {concept} bug on Nabbit — can you spot it?"*.
 - **Per-challenge OG**: `server.ts` injects real `<title>`/description/`og:image` (the real thumbnail) for a `?dare=` request — a real link preview, not just a static card.
 - **Caveat:** OG injection needs the Node server. A pure-static host (Vercel static) serves the generic `index.html`, so per-challenge previews there would need a serverless/edge OG function. *(The share UX + deep link work everywhere.)*
@@ -88,6 +104,7 @@ The judgment format generalizes to **"one artifact, one planted flaw, pick the f
 ### B7 — Freemium + native recommendation  *(Revenue)* — DONE ✅ *(illustrative, labeled)*
 - **Free:** curated drills + recall + sharing + summary/timeline. ✅
 - **Native recommendation card** at the pain moment (a miss; stronger copy once missed ≥2×): "Struggling with {concept}?" with a real **Rewatch-the-chapter** link (actual video at the timestamp) + a "Pro — coming soon" note. Native, not a banner. ✅
+- ⚠️ **Mismatch:** the YouTube importer is now **live (Gemini) for every signed-in user**, not a disabled Pro teaser — decide whether it stays free or moves behind Pro. (The original teaser below describes the earlier build.)
 - **Nabbit Pro preview** in the Library: a **disabled** paste-any-video input + Pro feature list (auto-gen, more formats, stacks, mastery) + a **For-teams/B2B** line. No transactions, no payment/credential capture (intentionally — demo-safe).
 - Revenue ranking (unchanged): **B2B seats > premium sub > affiliate > sponsored packs.** Skip display ads.
 - ⬜ Real payments, the actual Pro unlock, analytics/mastery, and B2B team view remain roadmap.
@@ -97,15 +114,21 @@ Pipeline: paste URL → fetch transcript + metadata → detect concept → gener
 
 ---
 
-## Phase 7 — Accounts + Database (post-buildathon)
+## Phase 7 — Accounts + Database — PARTIAL (identity + leads done; progress sync pending)
 
-Needed only when adding: login, cross-device sync, shared/team/leaderboard data, or saving user-generated challenges. **Pick: Supabase** (Postgres + Auth + RLS), accessed from the static Vercel SPA via the **anon key + Row-Level Security**, or from serverless functions with the service key. Env vars (`SUPABASE_URL`, anon key) set in Vercel.
+**Pick: Supabase** (Postgres + Auth + RLS), accessed from the static SPA via the **anon key + Row-Level Security** (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`; never the service-role key in the client).
 
-- **Store interface** with two adapters: `localStore` (anonymous) + `supabaseStore` (signed-in). `localStore` is already an abstraction, so this is localized.
-- **Sync model:** anonymous users stay on localStorage; on sign-in, push local progress up — activation stays login-free, accounts become an optional cross-device upgrade.
-- **Auth:** Supabase Auth handles signup/login/sessions (no hand-built auth).
+✅ Done: Supabase Auth, `public.users`, `public.leads`, auth-aware routing (see "Accounts & leads").
+
+⬜ Pending:
+- **Progress sync:** `attempts` / `recall_items` still live only in browser localStorage → no cross-device sync, and two accounts on one browser share progress. Needs the **store interface** with `localStore` + `supabaseStore` adapters (`localStore` is already an abstraction).
+- **Sync model (changed):** activation is no longer fully login-free — **trial drills are public but unsaved**; saving progress requires an account. Decide whether to push existing local progress up on first sign-in.
+- **New accounts start with seeded demo progress** (local seed) — should start at zero.
+- **Verification:** phone has no SMS provider; the "Enter Codes" banner/drawer and "Signed in successfully…" banner are leftovers from the demo-code flow; add resend-confirmation handling.
+- **Decision:** the trial reveal gates the *explanation* behind sign-up (conflicts with "no gate before value" in `user-journey.md`) — keep or show the reveal first.
+- **Remove legacy mock auth** (`/api/auth/*` in `server.ts`, demo sign-in fill) once Supabase is the only path.
 - **Schema sketch:**
-  - `users` (id, name, created_at)
+  - `users` (id, name, created_at) — *built as `public.users`: id, email, phone, display_name, verified flags, timestamps*
   - `attempts` (id, user_id, challenge_id, chosen, correct, at)
   - `recall_items` (id, user_id, challenge_id, concept, interval, next_review_at, last_reviewed_at)
   - (B2B) `teams`, `team_members`
@@ -115,7 +138,7 @@ Needed only when adding: login, cross-device sync, shared/team/leaderboard data,
 
 ## Roadmap (post-buildathon)
 
-PR-review format → more judgment formats (predict-output, tradeoff, drag-drop flow) → auto-gen (B8) → more stacks/domains (B6) → accounts + Supabase (Phase 7) → real cross-device sync → B2B team dashboards → mastery map + XP.
+PR-review format → more judgment formats (predict-output, tradeoff, drag-drop flow) → auto-gen (B8) → more stacks/domains (B6) → ~~accounts + Supabase~~ (identity done) → real cross-device progress sync (Phase 7) → B2B team dashboards → mastery map + XP.
 
 ---
 
@@ -125,6 +148,6 @@ PR-review format → more judgment formats (predict-output, tradeoff, drag-drop 
 - ✅ Accessibility pass (`aria-current`/`aria-pressed`, labels on icon-only controls, `sr-only` state cues, global `:focus-visible`).
 - ✅ Loading/error states (challenge-route loading guard; thumbnail `onError` fallback).
 - ✅ Demo-reset action (Recall dashboard).
-- ⬜ **Remaining (operational):** final hosted deploy + a screen-recording backup of the 5-minute demo.
+- ⬜ **Remaining (operational):** final hosted deploy + a screen-recording backup of the 5-minute demo. Deploy now also needs the two `VITE_SUPABASE_*` env vars and the three SQL migrations applied.
 
 **Acceptance:** runs cold in incognito, on phone and laptop; every button works; demo rehearsed once.

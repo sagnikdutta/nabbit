@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { Challenge, Video, RecallItem } from '../lib/types';
+import { api } from '../lib/api';
+import { getSharerRef } from '../lib/leads';
 import { CodeBlock } from '../components/CodeBlock';
 import { OptionCard } from '../components/OptionCard';
 import { Button } from '../components/Button';
@@ -58,7 +60,21 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
   const [shareState, setShareState] = useState<'idle' | 'copied' | 'shared'>('idle');
 
   // N2 — bug-dare: share the exact drill via a server-readable `?dare=` link.
-  const dareUrl = `${window.location.origin}/?dare=${encodeURIComponent(challenge.id)}`;
+  // UTM tags let the leads table attribute trial visits to shared dares.
+  const [sharerRef, setSharerRef] = useState<string | null>(null);
+  useEffect(() => {
+    const userId = api.getCurrentUser()?.id;
+    if (userId) getSharerRef(userId).then(setSharerRef);
+  }, []);
+
+  const dareParams = new URLSearchParams({
+    dare: challenge.id,
+    utm_source: 'share',
+    utm_medium: 'bug-dare',
+    utm_campaign: `dare-${challenge.id}`,
+  });
+  if (sharerRef) dareParams.set('ref', sharerRef);
+  const dareUrl = `${window.location.origin}/?${dareParams.toString()}`;
   const dareText = `I just caught a ${challenge.concept} bug on Nabbit — can you spot it?`;
 
   // N7 — native recommendation at the pain moment (a miss), stronger when the

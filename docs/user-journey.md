@@ -4,6 +4,22 @@
 > (Acquisition · Activation · Retention · Referral · Revenue), so every screen
 > and feature has a clear job in the funnel. Engineering detail lives in
 > `build-plan.md`; this is the experience spec behind it.
+>
+> **Updated 22 Oct** — accounts (Supabase Auth + `public.users`), signed-out *trial
+> mode*, a separate signed-in *dashboard*, and lead capture on shared links are now in.
+> See "Status vs. this spec" at the bottom for what is still open.
+
+## Who sees what (since accounts shipped)
+
+| Visitor | Home | Challenges | Spaced Recall | Progress saved? |
+|---|---|---|---|---|
+| **Signed out** | Landing page (pitch + curated packs, no progress) | **Public trial** — open any drill / shared dare, no login | Hidden | **No** |
+| **Signed in** | Dashboard (Today card, stats, library, collapsed YouTube import) | Full | Yes | Yes (this browser — see open items) |
+
+Finishing a **trial** drill grades it locally, saves nothing, and sends the visitor
+to **sign-up** (banner: "Nice catch!" / "Not quite" + "create an account to see the
+full explanation, save progress and get recall reviews"). After signing up they land
+back on that drill, signed in.
 
 ## The core loop (one sentence)
 
@@ -28,10 +44,16 @@ days later. Reachable via LinkedIn/X, dev communities, and her team.
   challenge) · "bug of the day" posts, community shares, Show HN · the curated
   video library as a discovery/SEO surface (each video + concept = a page).
 - **User does:** attempts the bug *before* knowing what Nabbit is.
-- **Nabbit does:** opens directly on the drill (deep link), no signup wall; a slim
-  "what is this?" strip.
-- **Screens:** Challenge (deep-linked), Library (hero).
-- **Metrics:** share→click CTR · new visitors · % attempting the first drill.
+- **Nabbit does:** opens directly on the drill (deep link) in **trial mode** — no
+  signup wall *before* the attempt; a slim "what is this?" strip. Records a **lead**
+  (anonymous visitor id + challenge id + UTM tags + referrer + sharer ref) in
+  Supabase `public.leads` for later retargeting/ads.
+- **Share-link tags:** in-app dares carry `utm_source=share`, `utm_medium=bug-dare`,
+  `utm_campaign=dare-<challengeId>` and `ref=<anonymous sharer id>`. Hand-made links
+  (LinkedIn post, newsletter…) can set their own `utm_*`.
+- **Screens:** Challenge (deep-linked, trial) · Landing (signed-out home).
+- **Metrics:** share→click CTR · new visitors · % attempting the first drill ·
+  leads by `utm_source` / `utm_campaign` / challenge.
 - **Drop-off risks:** a signup/landing wall before the drill; slow first paint.
 
 ## 2. Activation — *the first "aha"*
@@ -39,9 +61,13 @@ days later. Reachable via LinkedIn/X, dev communities, and her team.
 - **Goal:** a satisfying first win + "why" inside 2 minutes.
 - **User does:** submits an answer, sees correct/wrong + the explanation tied to
   the video's concept.
-- **Nabbit does:** instant deterministic verdict; **inline reveal (same page)**;
-  before/after + explanation; a **skippable** name prompt *after* the first attempt
-  personalizes ("Nice catch, Arin").
+- **Nabbit does (signed in):** instant deterministic verdict; **inline reveal (same
+  page)**; before/after + explanation; personalized "Nice catch, {name}" (name comes
+  from the account email — the old skippable name prompt no longer fires).
+- **Nabbit does (trial / signed out):** grades locally, then redirects to **sign-up**
+  with a verdict-only teaser. **The full explanation is behind sign-up** — a
+  deliberate conversion gate, and the main tension with this stage's "no gate before
+  value" principle (see open items).
 - **Levers:** difficulty choice keeps the first drill winnable; a free video
   summary/timeline gives quick context.
 - **Screens:** Challenge → inline Reveal.
@@ -56,8 +82,13 @@ days later. Reachable via LinkedIn/X, dev communities, and her team.
   revisit rate.
 - **Returning triggers:** streak · due queue · (roadmap) email/push nudge.
 - **Depth:** difficulty tiers + session length give a sense of leveling up.
-- **Screens:** Recall dashboard (the returning-user home) · time-travel simulator
+- **Screens:** **Dashboard** (the signed-in home: a "Today" card — *N due for review →
+  Start review*, or *Continue* when nothing is due — three quiet stats, in-progress
+  packs first, YouTube import collapsed) · Recall dashboard · time-travel simulator
   (demo device to show resurfacing without waiting days).
+- **Accounts:** email + password (+ phone) via Supabase Auth; every registration is
+  mirrored into `public.users` by a DB trigger. Spaced Recall and the streak are
+  members-only.
 - **Metrics:** **revisit rate (north-star)** · streak length · D1/D7 return.
 - **Drop-off risks:** no reminder channel; static-feeling dashboard; nothing new
   to return for.
@@ -70,6 +101,8 @@ days later. Reachable via LinkedIn/X, dev communities, and her team.
   streak/score card. The dare pulls the recipient into a drill → their referral
   becomes the next person's acquisition.
 - **Screens:** Reveal (share CTA) · a shareable result / OG card.
+- **Attribution:** each share link carries the sharer's anonymous `ref`; the
+  `public.lead_sharers` view shows per user: trial visits → completed → signed up.
 - **Metrics:** shares per active user · viral coefficient (dares → attempts → users).
 - **Note:** Acquisition and Referral are the **same loop** — invest once, it powers both.
 
@@ -120,7 +153,10 @@ days later. Reachable via LinkedIn/X, dev communities, and her team.
 | Premium tier | Revenue | — |
 | Native recommendation | Revenue | Retention |
 | B2B / team | Revenue | — |
-| Login / accounts (optional, post-activation) | Retention | Revenue |
+| Login / accounts (Supabase Auth + `public.users`) — **required to save progress**; trial drills work without it | Activation (conversion gate) | Retention |
+| Signed-out trial mode (no saved progress → sign-up redirect) | Acquisition | Activation |
+| Signed-in dashboard (Today card, stats) | Retention | — |
+| Lead capture (`public.leads`) + sharer attribution (`lead_sharers`) | Acquisition | Referral |
 
 ## North-star & guardrail metrics
 
@@ -128,6 +164,40 @@ days later. Reachable via LinkedIn/X, dev communities, and her team.
 - **Acquisition:** share→try CTR · **Activation:** % first-drill complete < 2 min ·
   **Retention:** D7 return, streak · **Referral:** shares / active user ·
   **Revenue:** free→paid %.
+
+---
+
+## Status vs. this spec
+
+**Done:** Supabase Auth + `public.users` mirror (`0001`) · signed-out trial mode ·
+signup redirect after a trial drill · signed-in dashboard · UTM-tagged share links ·
+`public.leads` capture (`0002`) · sharer ref + `lead_sharers` view (`0003`).
+
+**Open / mismatching**
+1. **Migrations:** confirm `0002_leads.sql` and `0003_leads_sharer_ref.sql` have been
+   run in the nabbit Supabase project (`0003` must run before the new share links work).
+2. **Explanation behind sign-up vs. "no gate before value":** trial users never see
+   the *why* unless they register. Decide: keep (stronger conversion) or show the
+   reveal first and put the sign-up prompt on its buttons.
+3. **Progress is not in Supabase yet.** Attempts and recall items still live in
+   browser `localStorage`; only identity is in Supabase. So: no cross-device sync
+   (the sign-in copy "sync your spaced-recall progress across devices" is
+   inaccurate), and two accounts on one browser share the same local progress.
+   The planned `attempts` / `recall_items` tables are still pending (build-plan Phase 7).
+4. **New accounts start with seeded demo progress** (solved packs, a due item) from
+   the local seed — a fresh user should start at zero.
+5. **Verification is half-real:** email confirmation is Supabase's; phone
+   verification has no SMS provider; the "Enter Codes" banner / drawer still reflect
+   the old demo-code flow. Also pending: the "Signed in successfully…" banner and a
+   resend-confirmation button.
+6. **Premium vs. free:** build-plan has paste-any-video as a *disabled Pro teaser*,
+   but the YouTube importer is live for every signed-in user — decide whether it
+   stays free or moves behind Pro.
+7. **Leftovers:** local/Express mock auth (`/api/auth/*`, demo sign-in fill) is still
+   in the code as a fallback; the NameOnboarding prompt is effectively dormant;
+   landing hero still carries the "HelloPM Buildathon Entry" label.
+8. **Per-challenge OG previews** need the Node server (static hosts serve the
+   generic page) — unchanged from build-plan B4.
 
 ---
 

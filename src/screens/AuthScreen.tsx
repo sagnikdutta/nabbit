@@ -2,11 +2,14 @@ import React, { useState, useId } from 'react';
 import { Mail, Lock, Phone, Eye, EyeOff, CheckCircle2, AlertCircle, ArrowRight, ShieldCheck, Sparkles, Target, ChevronDown } from 'lucide-react';
 import { UserAccount } from '../lib/types';
 import { Button } from '../components/Button';
+import { api } from '../lib/api';
 
 export interface AuthScreenProps {
   initialMode?: 'signin' | 'signup';
   onSuccess: (user: UserAccount, notice?: string) => void;
   onCancel?: () => void;
+  /** Set when a visitor just finished a trial challenge and was sent here to sign up. */
+  trialResult?: { correct: boolean; concept: string } | null;
   signUpFn: (email: string, password: string, phone: string, countryCode: string) => Promise<{ user: UserAccount; backgroundNotice: string }>;
   signInFn: (identifier: string, password: string) => Promise<{ user: UserAccount; backgroundNotice: string }>;
 }
@@ -28,6 +31,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   initialMode = 'signup',
   onSuccess,
   onCancel,
+  trialResult,
   signUpFn,
   signInFn,
 }) => {
@@ -49,6 +53,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [touched, setTouched] = useState<{ email?: boolean; password?: boolean; phone?: boolean; signinId?: boolean }>({});
 
   const formId = useId();
+  const isSupabase = api.isSupabaseConfigured();
 
   // --- Browser Verifications ---
 
@@ -166,7 +171,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   };
 
   return (
-    <div className="max-w-md mx-auto py-8 px-4 sm:px-6">
+    <div className="max-w-md mx-auto py-8 px-4 sm:px-6 space-y-4">
+      {trialResult && (
+        <div className="rounded-[var(--radius)] border border-[var(--color-accent-border)] bg-[var(--color-accent-weak)] px-4 py-3 text-xs text-[var(--color-text)] leading-relaxed">
+          <strong className="font-semibold">
+            {trialResult.correct ? 'Nice catch! ✅' : 'Not quite — close one. 🔍'}
+          </strong>{' '}
+          You finished the “{trialResult.concept}” trial drill. Create a free account to see the full
+          explanation, save your progress and get spaced-recall reviews.
+        </div>
+      )}
       <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-6 sm:p-8 shadow-[var(--shadow-md)] space-y-6">
         {/* Brand Header */}
         <div className="text-center space-y-2">
@@ -181,6 +195,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               ? 'Instant access to bug hunt drills. Verifications deliver in the background.'
               : 'Sign in to sync your spaced-recall progress across devices.'}
           </p>
+
+          {/* Supabase Connection Status Pill */}
+          {isSupabase ? (
+            <div className="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-mono mx-auto">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Supabase Auth Connected</span>
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-[11px] font-mono mx-auto">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+              <span>Local Auth Mode · Add Supabase keys to .env</span>
+            </div>
+          )}
         </div>
 
         {/* Mode Switcher Tabs */}
@@ -415,15 +442,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 </div>
               </div>
               <p className="text-[11px] text-[var(--color-muted)]">
-                Used for account recovery and background SMS security verification.
+                Stored securely in user profile for verification and recovery.
               </p>
             </div>
 
-            {/* Smooth Background Reassurance Notice */}
+            {/* Reassurance Notice */}
             <div className="p-3 rounded-[var(--radius-sm)] bg-[var(--color-accent-weak)] border border-[var(--color-accent-border)] text-xs text-[var(--color-text)] flex items-start gap-2">
               <Sparkles className="w-4 h-4 text-[var(--color-accent)] shrink-0 mt-0.5" />
               <p className="text-[11px] leading-relaxed text-[var(--color-text-subtle)]">
-                <strong className="text-[var(--color-text)]">Smooth instant access:</strong> You enter directly into drills. Email link and SMS OTP dispatch asynchronously in the background.
+                <strong className="text-[var(--color-text)]">Smooth instant access:</strong> You enter directly into drills. {isSupabase ? 'Authenticated securely via Supabase Auth.' : 'Verification codes dispatch asynchronously in the background.'}
               </p>
             </div>
 
@@ -455,12 +482,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   type="text"
                   autoComplete="username"
                   required
-                  placeholder="name@company.com or phone number"
+                  placeholder="name@company.com or phone"
                   value={signinIdentifier}
                   onChange={e => {
                     setSigninIdentifier(e.target.value);
                     if (generalError) setGeneralError(null);
                   }}
+                  onBlur={() => setTouched(prev => ({ ...prev, signinId: true }))}
                   className="w-full pl-9 pr-3 py-2 text-xs rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:outline-none focus:border-[var(--color-accent)] transition-colors"
                 />
               </div>
@@ -472,6 +500,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   Password
                 </label>
               </div>
+
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[var(--color-muted)]">
                   <Lock className="w-4 h-4" />
@@ -512,17 +541,52 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               Sign In
             </Button>
 
-            {/* Quick Demo Credentials */}
-            <div className="pt-2 text-center">
-              <button
-                type="button"
-                onClick={fillDemoCredentials}
-                className="text-xs text-[var(--color-muted)] hover:text-[var(--color-accent)] font-mono transition-colors cursor-pointer"
-              >
-                Use demo account (alex.dev@nabbit.io)
-              </button>
-            </div>
+            {/* Quick Demo Credentials only if Supabase is not active */}
+            {!isSupabase && (
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={fillDemoCredentials}
+                  className="text-xs text-[var(--color-muted)] hover:text-[var(--color-accent)] font-mono transition-colors cursor-pointer"
+                >
+                  Use demo account (alex.dev@nabbit.io)
+                </button>
+              </div>
+            )}
           </form>
+        )}
+
+        {/* Supabase Setup Card if keys are not yet in .env */}
+        {!isSupabase && (
+          <div className="p-3.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface-subtle)] text-xs text-[var(--color-muted)] space-y-2">
+            <div className="flex items-center gap-1.5 text-[var(--color-text)] font-semibold text-xs">
+              <ShieldCheck className="w-3.5 h-3.5 text-[var(--color-accent)]" />
+              <span>Connect Your Supabase Account</span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-[var(--color-text-subtle)]">
+              To activate real Supabase authentication, add your project credentials to your <code className="text-[var(--color-accent)] font-mono">.env</code> file:
+            </p>
+            <div className="bg-[var(--code-bg)] text-[var(--code-text)] p-2.5 rounded font-mono text-[10.5px] space-y-1 select-all overflow-x-auto">
+              <div>VITE_SUPABASE_URL=https://your-project.supabase.co</div>
+              <div>VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1Ni...</div>
+            </div>
+            <p className="text-[10.5px] text-[var(--color-muted)]">
+              Get these from: Supabase Dashboard → Settings → API
+            </p>
+          </div>
+        )}
+
+        {/* Supabase Active Security Badge */}
+        {isSupabase && (
+          <div className="p-3.5 rounded-[var(--radius-sm)] border border-emerald-500/20 bg-emerald-500/5 text-xs text-[var(--color-muted)] space-y-1">
+            <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold font-mono text-xs">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Protected by Supabase Auth</span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-[var(--color-text-subtle)]">
+              Your credentials are securely hashed and stored in your Supabase project. Authentication tokens auto-refresh across sessions.
+            </p>
+          </div>
         )}
 
         {/* Cancel / Back Button */}

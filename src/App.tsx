@@ -16,6 +16,7 @@ import { ChallengeScreen } from './screens/ChallengeScreen';
 import { RecallDashboardScreen } from './screens/RecallDashboardScreen';
 
 import { AuthScreen } from './screens/AuthScreen';
+import { trackTrialView, trackTrialCompleted, claimLeads } from './lib/leads';
 import { VerificationDrawer } from './components/VerificationDrawer';
 import { UserAccount } from './lib/types';
 import { ShieldCheck, X } from 'lucide-react';
@@ -111,6 +112,8 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => api.getCurrentUser());
   const [isVerificationOpen, setIsVerificationOpen] = useState(false);
   const [backgroundNotice, setBackgroundNotice] = useState<string | null>(null);
+  // Set when a signed-out visitor finishes a trial challenge: sends them to sign up.
+  const [trialResult, setTrialResult] = useState<{ correct: boolean; concept: string } | null>(null);
 
   // Subscribe to auth changes
   useEffect(() => {
@@ -127,6 +130,7 @@ export default function App() {
   // Keep screen state in sync with the URL hash (back/forward, refresh, shared links).
   useEffect(() => {
     const sync = () => {
+      setTrialResult(null);
       const parsed = parseHash();
       setRoute(parsed.route);
       if (parsed.challengeId) setActiveChallengeId(parsed.challengeId);
@@ -148,6 +152,7 @@ export default function App() {
 
   // Navigate by writing the hash; the listener above updates screen state.
   const go = (nextRoute: Route, challengeId?: string) => {
+    setTrialResult(null);
     const id = challengeId ?? (nextRoute === 'challenge' ? activeChallengeId : undefined);
     const target = hashFor(nextRoute, id);
     if (window.location.hash === target) {
@@ -264,10 +269,13 @@ export default function App() {
 
   const handleAuthSuccess = (user: UserAccount, notice?: string) => {
     setCurrentUser(user);
+    setTrialResult(null);
+    claimLeads();
     if (notice) {
       setBackgroundNotice(notice);
     }
-    go('library');
+    // Land on the library after sign-in, unless they came in via a deep link (e.g. a shared dare).
+    if (route === 'auth') go('library');
   };
 
   const handleVerifyContact = async (type: 'email' | 'phone', code: string) => {
@@ -294,6 +302,19 @@ export default function App() {
   };
 
   const handleSubmitAttempt = async (chosen: number) => {
+    // Trial mode (signed out): grade locally, save nothing, send them to sign up.
+    if (!currentUser) {
+      const trial = challenges.find(c => c.id === activeChallengeId);
+      if (trial) {
+        const correct = chosen === trial.correctOption;
+        trackTrialCompleted(trial.id, correct);
+        setTrialResult({ correct, concept: trial.concept });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      // The challenge screen is replaced by the sign-up screen, so this never needs to resolve.
+      return new Promise<never>(() => {});
+    }
+
     const result = await api.submitAttempt(activeChallengeId, chosen);
 
     // Refresh dashboard stats; the challenge screen reveals the result in place.
@@ -356,8 +377,38 @@ export default function App() {
   const currentVideoChallenges =
     currentChallenge && challenges.filter(c => c.videoId === currentChallenge.videoId);
 
+  // Routing by auth state:
+  //  - signed out: landing page + public trial challenges (shared links); finishing a
+  //    trial challenge sends them to sign-up. Recall is members-only.
+  //  - signed in: dashboard / drills / recall; the auth screen redirects to the library.
+  const activeRoute: Route = !currentUser
+    ? trialResult
+      ? 'auth'
+      : route === 'auth' || route === 'challenge'
+      ? route
+      : 'library'
+    : route === 'auth'
+    ? 'library'
+    : route;
+
+  // Trial-link lead capture: remember which shared challenge a signed-out visitor opened.
+  useEffect(() => {
+    if (!currentUser && route === 'challenge' && activeChallengeId) {
+      trackTrialView(activeChallengeId);
+    }
+  }, [currentUser, route, activeChallengeId]);
+
+  // A signed-in user opening #/auth gets the clean library URL.
+  useEffect(() => {
+    if (currentUser && route === 'auth') {
+      window.history.replaceState(null, '', '#/');
+      setRoute('library');
+    }
+  }, [currentUser, route]);
+
   // Dynamic tab title (client-side) — helps shared links and bookmarks read well.
   useEffect(() => {
+    const route = activeRoute;
     const base = 'Nabbit — Code Review Drills & Spaced Recall';
     if (route === 'auth') {
       document.title = 'Sign In & Sign Up · Nabbit';
@@ -368,7 +419,7 @@ export default function App() {
     } else {
       document.title = base;
     }
-  }, [route, currentChallenge]);
+  }, [activeRoute, currentChallenge]);
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--color-bg)] text-[var(--color-text)] transition-colors">
@@ -392,7 +443,7 @@ export default function App() {
 
       {/* 3-Zone Top Navigation Bar */}
       <Navbar
-        currentRoute={route}
+        currentRoute={activeRoute}
         onNavigate={handleNavigate}
         activeStreak={stats.currentStreak}
         dueCount={stats.dueCount}
@@ -435,22 +486,25 @@ export default function App() {
           </div>
         )}
 
-        {route === 'auth' && (
+        {activeRoute === 'auth' && (
           <AuthScreen
             initialMode="signup"
+            trialResult={trialResult}
             onSuccess={handleAuthSuccess}
             onCancel={() => handleNavigate('library')}
             signUpFn={api.signUp}
             signInFn={api.signIn}
           />
         )}
-        {route === 'library' && (
+        {activeRoute === 'library' && (
           <LibraryScreen
             videos={videos}
             challenges={challenges}
             recallItems={recallItems}
             stats={stats}
             userName={profileName}
+            mode={currentUser ? 'dashboard' : 'landing'}
+            onGoToRecall={() => handleNavigate('recall')}
             onSelectVideo={handleSelectVideo}
             onSelectChallenge={handleSelectChallenge}
             onImportYouTube={handleImportYouTube}
@@ -458,7 +512,7 @@ export default function App() {
           />
         )}
 
-        {route === 'challenge' && currentChallenge && currentVideo && (
+        {activeRoute === 'challenge' && currentChallenge && currentVideo && (
           <ChallengeScreen
             challenge={currentChallenge}
             video={currentVideo}
@@ -474,13 +528,13 @@ export default function App() {
           />
         )}
 
-        {route === 'challenge' && !currentChallenge && (
+        {activeRoute === 'challenge' && !currentChallenge && (
           <div className="py-24 text-center text-sm text-[var(--color-muted)] font-mono">
             Loading drill…
           </div>
         )}
 
-        {route === 'recall' && (
+        {activeRoute === 'recall' && (
           <RecallDashboardScreen
             stats={stats}
             dueItems={dueItems}
@@ -505,13 +559,6 @@ export default function App() {
             <span>Nabbit</span>
             <span className="mx-2">·</span>
             <span>Catch the nit on the dev videos you watch</span>
-          </div>
-          <div className="flex items-center gap-4 text-[11px]">
-            <span>Deterministic MCQ Grading</span>
-            <span>·</span>
-            <span>Direction B Tokens</span>
-            <span>·</span>
-            <span>HelloPM Cohort 52</span>
           </div>
         </div>
       </footer>

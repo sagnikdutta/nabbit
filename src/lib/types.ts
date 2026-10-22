@@ -73,6 +73,7 @@ export interface UserAccount {
   createdAt: number;
   emailVerificationSentAt?: number;
   phoneVerificationSentAt?: number;
+  provider?: 'supabase' | 'local' | 'demo';
   demoVerificationCodes?: {
     emailCode: string;
     phoneCode: string;
