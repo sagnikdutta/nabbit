@@ -128,6 +128,8 @@ export const CURATED_CHALLENGES: Challenge[] = [
       inspectionClue: 'Look at line 8: the <li> element returned by items.map() lacks a key attribute to preserve DOM identity.',
     },
     buggyLines: [11],
+    buggyLineAnswer: 11, // backfill
+    seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `interface TodoItem {
   id: string;
   title: string;
@@ -188,6 +190,8 @@ function TodoList({ items }: { items: TodoItem[] }) {
       inspectionClue: 'Look at line 8: {unreadMessages.length && ...} evaluates to 0 when the array is empty, which leaks a visible "0" on screen.',
     },
     buggyLines: [8],
+    buggyLineAnswer: 8, // backfill
+    seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `interface InboxProps {
   unreadMessages: string[];
 }
@@ -240,6 +244,8 @@ function MessageInbox({ unreadMessages }: InboxProps) {
       inspectionClue: 'Look at line 9: <button onClick={onDelete(userId)}> executes during component render instead of waiting for a click event.',
     },
     buggyLines: [6],
+    buggyLineAnswer: 6, // backfill
+    seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `interface UserCardProps {
   userId: string;
   onDelete: (id: string) => void;
@@ -350,6 +356,8 @@ function UserCard({ userId, onDelete }: UserCardProps) {
       inspectionClue: 'Look at line 5: response.json() is called without inspecting response.ok or response.status.',
     },
     buggyLines: [4],
+    buggyLineAnswer: 4, // backfill
+    seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `async function loadDashboardMetrics() {
   try {
     const response = await fetch("/api/v1/metrics");
@@ -400,6 +408,8 @@ function UserCard({ userId, onDelete }: UserCardProps) {
       inspectionClue: 'Look at line 6: Promise.all will abort all reports if one optional report fails.',
     },
     buggyLines: [5],
+    buggyLineAnswer: 5, // backfill
+    seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `async function loadBatchReports(reportIds: string[]) {
   // If one optional report has expired, we still need all other reports
   const reportPromises = reportIds.map(id => fetchReport(id));
@@ -501,6 +511,8 @@ function UserCard({ userId, onDelete }: UserCardProps) {
       inspectionClue: 'Look at lines 6-8: window.addEventListener is called on mount, but the effect returns void instead of a cleanup function.',
     },
     buggyLines: [7],
+    buggyLineAnswer: 7, // backfill
+    seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `function WindowWidthTracker() {
   const [width, setWidth] = useState(window.innerWidth);
 
@@ -551,6 +563,8 @@ function UserCard({ userId, onDelete }: UserCardProps) {
       inspectionClue: 'Look at lines 6-7: setHistory updates history, while [history] is present in the dependency array.',
     },
     buggyLines: [6],
+    buggyLineAnswer: 6, // backfill
+    seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `interface ProfileProps {
   user: { name: string; visits: number };
 }
@@ -610,6 +624,8 @@ function ProfileSummary({ user }: ProfileProps) {
       inspectionClue: 'Look at line 7: Action is set to "s3:*" and Resource is "*", granting total administrative control across all S3 buckets.',
     },
     buggyLines: [7],
+    buggyLineAnswer: 7, // backfill
+    seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `{
   "Version": "2012-10-17",
   "Statement": [
@@ -661,6 +677,8 @@ function ProfileSummary({ user }: ProfileProps) {
       inspectionClue: 'Look at line 7 in the ingress block for port 22: cidr_blocks is set to ["0.0.0.0/0"].',
     },
     buggyLines: [7],
+    buggyLineAnswer: 7, // backfill
+    seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `resource "aws_security_group" "bastion_ingress" {
   name        = "bastion-sg"
   description = "Security group for production bastion host"

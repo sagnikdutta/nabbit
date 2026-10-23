@@ -9,7 +9,9 @@
     "start": "cross-env NODE_ENV=production tsx server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "node --import tsx --test src/lib/grading.test.ts",
+    "backfill": "tsx scripts/backfill-challenge-fields.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

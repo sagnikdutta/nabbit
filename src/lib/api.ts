@@ -11,6 +11,7 @@ import {
   AuthResponse,
 } from './types';
 import { CURATED_VIDEOS, CURATED_CHALLENGES } from '../content/data';
+import { normalizeChallenges, normalizeChallenge } from '../content/normalize';
 import { calculateRecallSchedule, computeStats, getSimulatedNow } from './recall';
 import { grade, computeScore } from './grading';
 import { extractYouTubeVideoId, generateFallbackPastedPack } from './youtube';
@@ -275,13 +276,14 @@ class LocalStore {
   }
 
   public getChallenges(videoId?: string): Challenge[] {
-    const all = [...this.customChallenges, ...CURATED_CHALLENGES];
+    const all = normalizeChallenges([...this.customChallenges, ...CURATED_CHALLENGES]);
     if (!videoId) return all;
     return all.filter(c => c.videoId === videoId);
   }
 
   public getChallenge(id: string): Challenge | undefined {
-    return [...this.customChallenges, ...CURATED_CHALLENGES].find(c => c.id === id);
+    const found = [...this.customChallenges, ...CURATED_CHALLENGES].find(c => c.id === id);
+    return found ? normalizeChallenge(found) : undefined;
   }
 
   public addCustomPack(video: Video, challenges: Challenge[]) {
