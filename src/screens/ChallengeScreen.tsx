@@ -12,6 +12,7 @@ import { FormatChooser } from '../components/FormatChooser';
 import { ConfidencePicker } from '../components/ConfidencePicker';
 import { SpotFixPanel } from '../components/formats/SpotFixPanel';
 import { LocateThenFixPanel } from '../components/formats/LocateThenFixPanel';
+import { RankFixesPanel } from '../components/formats/RankFixesPanel';
 import { ArrowLeft, CheckCircle, AlertTriangle, ShieldCheck, Target, X } from 'lucide-react';
 
 export interface AttemptResult {
@@ -61,9 +62,14 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
   onGoToRecall,
 }) => {
   const formats = availableFormats(challenge);
+  const identityOrder = React.useMemo(
+    () => challenge.fixOptions.map((_, i) => i),
+    [challenge.id, challenge.fixOptions.length],
+  );
   const [format, setFormat] = useState<ChallengeFormat>(formats[0]);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [selectedLine, setSelectedLine] = useState<number | null>(null);
+  const [rankOrder, setRankOrder] = useState<number[]>(identityOrder);
   const [confidence, setConfidence] = useState<Confidence>('sure');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [phase, setPhase] = useState<'answering' | 'revealed'>('answering');
@@ -77,11 +83,13 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
   useEffect(() => {
     setSelectedOption(null);
     setSelectedLine(null);
+    setRankOrder(identityOrder);
     setPhase('answering');
     setResult(null);
     setIsSubmitting(false);
     setCueTimestamp(null);
     startedAt.current = Date.now();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [challenge.id]);
 
   // Reset the format when the drill changes (always default to the first available).
@@ -94,16 +102,21 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
   // Format-aware readiness check — gates the submit button.
   const canSubmit = (() => {
     if (format === 'locate-then-fix') return selectedLine !== null && selectedOption !== null;
+    if (format === 'rank-fixes') return true; // any ordering is a valid attempt
     return selectedOption !== null;
   })();
 
   const handleSubmit = async () => {
     if (!canSubmit || isSubmitting) return;
     setIsSubmitting(true);
-    const input: AttemptInput =
-      format === 'locate-then-fix'
-        ? { format: 'locate-then-fix', line: selectedLine as number, chosen: selectedOption as number }
-        : { format: 'spot-fix', chosen: selectedOption as number };
+    let input: AttemptInput;
+    if (format === 'locate-then-fix') {
+      input = { format: 'locate-then-fix', line: selectedLine as number, chosen: selectedOption as number };
+    } else if (format === 'rank-fixes') {
+      input = { format: 'rank-fixes', order: rankOrder };
+    } else {
+      input = { format: 'spot-fix', chosen: selectedOption as number };
+    }
     const timeMs = Math.max(0, Date.now() - startedAt.current);
     const res = await onSubmitAttempt(input, { confidence, timeMs });
     setResult(res);
@@ -120,6 +133,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
     if (phase !== 'answering') return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['1', '2', '3', '4'].includes(e.key)) {
+        if (format === 'rank-fixes') return; // 1-4 would collide with rank positions
         const idx = parseInt(e.key, 10) - 1;
         if (idx >= challenge.fixOptions.length) return;
         if (format === 'locate-then-fix' && selectedLine === null) return;
@@ -131,15 +145,17 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
         setFormat(formats[(i + 1) % formats.length]);
         setSelectedOption(null);
         setSelectedLine(null);
+        setRankOrder(identityOrder);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedOption, selectedLine, challenge, phase, format, formats, canSubmit]);
+  }, [selectedOption, selectedLine, rankOrder, challenge, phase, format, formats, canSubmit, identityOrder]);
 
   const handleRetry = () => {
     setSelectedOption(null);
     setSelectedLine(null);
+    setRankOrder(identityOrder);
     setResult(null);
     setPhase('answering');
     startedAt.current = Date.now();
@@ -150,20 +166,22 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
     setFormat(next);
     setSelectedOption(null);
     setSelectedLine(null);
+    setRankOrder(identityOrder);
     startedAt.current = Date.now();
   };
 
   const currentIndex = allChallengesInVideo.findIndex(c => c.id === challenge.id);
 
   // Once an answer is submitted, swap the drill in place for the inline reveal.
-  if (phase === 'revealed' && result && selectedOption !== null) {
+  // Rank-fixes has no single selectedOption; fall back to -1 so the guard allows it.
+  if (phase === 'revealed' && result) {
     return (
       <RevealScreen
         embedded
         userName={userName}
         challenge={challenge}
         video={video}
-        chosenOption={selectedOption}
+        chosenOption={selectedOption ?? -1}
         chosenLine={selectedLine}
         format={format}
         isCorrect={result.correct}
@@ -339,12 +357,19 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
           />
 
           {/* Format-specific input panel */}
-          {locateMode ? (
+          {format === 'locate-then-fix' ? (
             <LocateThenFixPanel
               challenge={challenge}
               selectedLine={selectedLine}
               selectedOption={selectedOption}
               onChangeOption={setSelectedOption}
+              disabled={isSubmitting}
+            />
+          ) : format === 'rank-fixes' ? (
+            <RankFixesPanel
+              challenge={challenge}
+              order={rankOrder}
+              onChangeOrder={setRankOrder}
               disabled={isSubmitting}
             />
           ) : (

@@ -7,6 +7,8 @@ import { CodeBlock } from '../components/CodeBlock';
 import { OptionCard } from '../components/OptionCard';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
+import { ShareGrid } from '../components/ShareGrid';
+import { Autopsy } from '../components/Autopsy';
 import {
   CheckCircle2,
   XCircle,
@@ -17,7 +19,6 @@ import {
   Check,
   BookOpen,
   ArrowLeft,
-  Share2,
   GraduationCap,
   Sparkles,
   ExternalLink,
@@ -72,7 +73,6 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
 }) => {
   const isPartial = outcome === 0.5;
   const [activeTab, setActiveTab] = useState<'diff' | 'explanation'>('diff');
-  const [shareState, setShareState] = useState<'idle' | 'copied' | 'shared'>('idle');
 
   // N2 — bug-dare: share the exact drill via a server-readable `?dare=` link.
   // UTM tags let the leads table attribute trial visits to shared dares.
@@ -90,27 +90,11 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
   });
   if (sharerRef) dareParams.set('ref', sharerRef);
   const dareUrl = `${window.location.origin}/?${dareParams.toString()}`;
-  const dareText = `I just caught a ${challenge.concept} bug on Nabbit — can you spot it?`;
 
   // N7 — native recommendation at the pain moment (a miss), stronger when the
   // concept has been missed repeatedly. Points at the real source chapter.
   const missCount = recallItem.history.filter(a => !a.correct).length;
   const watchUrl = `https://www.youtube.com/watch?v=${video.youtubeId}&t=${challenge.timestampSeconds}s`;
-
-  const handleShareDare = async () => {
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: 'Nabbit bug-dare', text: dareText, url: dareUrl });
-        setShareState('shared');
-      } else {
-        await navigator.clipboard.writeText(`${dareText} ${dareUrl}`);
-        setShareState('copied');
-      }
-      window.setTimeout(() => setShareState('idle'), 2200);
-    } catch {
-      // user cancelled the share sheet, or clipboard is blocked — no-op
-    }
-  };
 
   // Trigger celebration confetti on correct solve, using live theme tokens
   // (no raw hex here — colors come from the design-token layer at runtime).
@@ -193,7 +177,9 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
                   ? `Nice catch, ${userName}! Sharp Review Judgment.`
                   : 'Bug Caught! Sharp Review Judgment.'
                 : isPartial
-                ? 'Right line, wrong fix.'
+                ? format === 'rank-fixes'
+                  ? 'Close ranking.'
+                  : 'Right line, wrong fix.'
                 : 'Planted Bug Missed.'}
             </h1>
           </div>
@@ -212,9 +198,13 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
                   recallItem.interval === 1 ? 'day' : 'days'
                 }.`
               : isPartial
-              ? `You located the suspect line — but picked a fix that doesn't repair it. Streak preserved; the concept resurfaces in ${recallItem.interval} ${
-                  recallItem.interval === 1 ? 'day' : 'days'
-                }.`
+              ? format === 'rank-fixes'
+                ? `Your ranking was mostly right. Streak preserved; the concept resurfaces in ${recallItem.interval} ${
+                    recallItem.interval === 1 ? 'day' : 'days'
+                  }.`
+                : `You located the suspect line — but picked a fix that doesn't repair it. Streak preserved; the concept resurfaces in ${recallItem.interval} ${
+                    recallItem.interval === 1 ? 'day' : 'days'
+                  }.`
               : 'The code contained a subtle edge-case defect. Scheduled to resurface in 1 day for reinforcement.'}
           </p>
 
@@ -310,34 +300,17 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
         </div>
       </section>
 
-      {/* Bug-dare share (N2) — turn a win into the next person's acquisition */}
-      <section className="rounded-[var(--radius)] border border-[var(--color-accent-border)] bg-[var(--color-accent-weak)] p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-[var(--radius-sm)] bg-[var(--color-accent)] text-[var(--color-accent-ink)] flex items-center justify-center shrink-0">
-            <Share2 className="w-4 h-4" aria-hidden="true" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-[var(--color-text)]">Dare a friend to catch it</p>
-            <p className="text-xs text-[var(--color-muted)]">
-              Shares the exact drill — they attempt the bug before seeing the answer.
-            </p>
-          </div>
-        </div>
-
-        <Button
-          variant="primary"
-          size="md"
-          className="w-full sm:w-auto justify-center"
-          onClick={handleShareDare}
-          icon={<Share2 className="w-4 h-4" />}
-        >
-          {shareState === 'copied'
-            ? 'Dare link copied!'
-            : shareState === 'shared'
-            ? 'Shared!'
-            : 'Share this bug-dare'}
-        </Button>
-      </section>
+      {/* Phase 8 v1b — Wordle-grid share card (replaces the plain bug-dare share).
+          chosenOption < 0 means a rank-fixes attempt with no single chosen option. */}
+      <ShareGrid
+        challenge={challenge}
+        chosenOption={chosenOption < 0 ? null : chosenOption}
+        chosenLine={chosenLine}
+        isCorrect={isCorrect}
+        outcome={outcome}
+        streak={recallItem.streak}
+        dareUrl={dareUrl}
+      />
 
       {/* Answer Options Overview */}
       <div className="space-y-3">
@@ -361,6 +334,9 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Phase 8 v1b — Autopsy strip: distribution of picks across options. */}
+      <Autopsy challenge={challenge} chosenOption={chosenOption < 0 ? null : chosenOption} />
 
       {/* Side-by-Side Code Diff: Buggy vs Corrected */}
       <div className="space-y-3">

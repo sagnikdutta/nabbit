@@ -74,10 +74,47 @@ export function grade(challenge: Challenge, input: AttemptInput): GradeResult {
       return { correct: false, outcome: 0, basePoints: -40 };
     }
     case 'rank-fixes': {
-      // Deferred in v1a — ships in a later slice. Fail closed if called.
+      // Kendall-tau correlation between the user's order and the canonical rank.
+      // ≥ 0.8 → full correct; ≥ 0.5 → partial (streak preserved); else wrong.
+      if (!challenge.rankedFixes || challenge.rankedFixes.length !== input.order.length) {
+        return { correct: false, outcome: 0, basePoints: -40 };
+      }
+      const tau = kendallTau(input.order, challenge.rankedFixes);
+      if (tau >= 0.8) return { correct: true, outcome: 1, basePoints: 100 };
+      if (tau >= 0.5) return { correct: false, outcome: 0.5, basePoints: 50 };
       return { correct: false, outcome: 0, basePoints: -40 };
     }
   }
+}
+
+/**
+ * Kendall-tau correlation between two orderings over the same n items.
+ * Returns a value in [-1, 1]: 1 identical, 0 random, -1 reversed.
+ *
+ *   tau = (concordantPairs - discordantPairs) / nPairs
+ */
+export function kendallTau(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length < 2) return 0;
+  // Rank each item by its position in each ordering.
+  const rankA = new Map<number, number>();
+  const rankB = new Map<number, number>();
+  a.forEach((v, i) => rankA.set(v, i));
+  b.forEach((v, i) => rankB.set(v, i));
+  const items = [...rankA.keys()];
+  let concordant = 0;
+  let discordant = 0;
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      const x = items[i];
+      const y = items[j];
+      const ra = (rankA.get(x) ?? 0) - (rankA.get(y) ?? 0);
+      const rb = (rankB.get(x) ?? 0) - (rankB.get(y) ?? 0);
+      if (ra * rb > 0) concordant++;
+      else if (ra * rb < 0) discordant++;
+    }
+  }
+  const total = concordant + discordant;
+  return total === 0 ? 0 : (concordant - discordant) / total;
 }
 
 /**

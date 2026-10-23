@@ -66,6 +66,12 @@ export const CURATED_CHALLENGES: Challenge[] = [
     },
     buggyLines: [7],
     buggyLineAnswer: 7, // Phase 8 v1 — enables Locate-then-fix on this drill
+    // Phase 8 v1b — Rank-fixes canonical order (worst → best):
+    //   3 nonsense (hasFocus), 2 breaks reactivity (useRef),
+    //   1 timing hack (setTimeout), 0 correct (functional updater).
+    rankedFixes: [3, 2, 1, 0],
+    // Phase 8 v1b — Autopsy seed distribution until real attempts land.
+    seedDistribution: [0.42, 0.18, 0.22, 0.18],
     buggyCode: `function Counter() {
   const [count, setCount] = useState(0);
 
@@ -293,6 +299,7 @@ function UserCard({ userId, onDelete }: UserCardProps) {
     },
     buggyLines: [5],
     buggyLineAnswer: 5, // Phase 8 v1 — enables Locate-then-fix on this drill
+    seedDistribution: [0.45, 0.15, 0.25, 0.15], // Phase 8 v1b — Autopsy seed
     buggyCode: `async function syncDatabaseUsers(userIds: string[]) {
   console.log("Starting batch sync...");
 
@@ -439,6 +446,7 @@ function UserCard({ userId, onDelete }: UserCardProps) {
     },
     buggyLines: [7],
     buggyLineAnswer: 7, // Phase 8 v1 — enables Locate-then-fix on this drill
+    seedDistribution: [0.38, 0.22, 0.20, 0.20], // Phase 8 v1b — Autopsy seed
     buggyCode: `function AutoSavingTimer() {
   const [seconds, setSeconds] = useState(0);
 
