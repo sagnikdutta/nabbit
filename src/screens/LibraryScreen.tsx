@@ -107,6 +107,8 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                   <div className="text-sm font-bold text-[var(--color-text)]">
                     {stats.dueCount > 0
                       ? `${stats.dueCount} concept${stats.dueCount === 1 ? '' : 's'} due for review`
+                      : stats.totalSolved === 0
+                      ? 'Ready for your first bug hunt?'
                       : 'Nothing due — keep the streak going'}
                   </div>
                   <div className="text-xs text-[var(--color-muted)]">
@@ -136,7 +138,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                     icon={<Play className="w-4 h-4 fill-current" />}
                     onClick={() => onSelectChallenge(nextChallenge.id)}
                   >
-                    Continue
+                    {stats.totalSolved === 0 ? 'Start' : 'Continue'}
                   </Button>
                 )
               )}
