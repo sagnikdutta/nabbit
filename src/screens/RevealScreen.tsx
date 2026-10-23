@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
-import { Challenge, Video, RecallItem } from '../lib/types';
+import { Challenge, Video, RecallItem, ChallengeFormat, ScoreBreakdown } from '../lib/types';
 import { api } from '../lib/api';
 import { getSharerRef } from '../lib/leads';
 import { CodeBlock } from '../components/CodeBlock';
@@ -21,6 +21,9 @@ import {
   GraduationCap,
   Sparkles,
   ExternalLink,
+  Crosshair,
+  Zap,
+  TrendingUp,
 } from 'lucide-react';
 
 export interface RevealScreenProps {
@@ -39,6 +42,12 @@ export interface RevealScreenProps {
   embedded?: boolean;
   /** Optional local profile name, used to personalize the verdict. */
   userName?: string;
+  // Phase 8 v1 additions — optional so pre-v1 call sites keep working.
+  chosenLine?: number | null;
+  format?: ChallengeFormat;
+  outcome?: 0 | 0.5 | 1;
+  scoreBreakdown?: ScoreBreakdown;
+  comboAfter?: number;
 }
 
 export const RevealScreen: React.FC<RevealScreenProps> = ({
@@ -55,7 +64,13 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
   onBackToLibrary,
   embedded = false,
   userName,
+  chosenLine = null,
+  format = 'spot-fix',
+  outcome,
+  scoreBreakdown,
+  comboAfter,
 }) => {
+  const isPartial = outcome === 0.5;
   const [activeTab, setActiveTab] = useState<'diff' | 'explanation'>('diff');
   const [shareState, setShareState] = useState<'idle' | 'copied' | 'shared'>('idle');
 
@@ -144,48 +159,140 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
         className={`rounded-[var(--radius-lg)] border p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 shadow-[var(--shadow-sm)] transition-all ${
           isCorrect
             ? 'bg-[var(--color-good-weak)] border-[var(--color-good-border)]'
+            : isPartial
+            ? 'bg-[var(--color-warning-weak)] border-[var(--color-warning-border)]'
             : 'bg-[var(--color-danger-weak)] border-[var(--color-danger-border)]'
         }`}
       >
-        <div className="space-y-2">
+        <div className="space-y-2 min-w-0">
           <div className="flex items-center gap-2">
             {isCorrect ? (
               <div className="w-7 h-7 rounded-full bg-[var(--color-good)] text-white flex items-center justify-center">
                 <Check className="w-4 h-4 stroke-[3]" />
               </div>
             ) : (
-              <div className="w-7 h-7 rounded-full bg-[var(--color-danger)] text-white flex items-center justify-center">
+              <div
+                className={`w-7 h-7 rounded-full text-white flex items-center justify-center ${
+                  isPartial ? 'bg-[var(--color-warning)]' : 'bg-[var(--color-danger)]'
+                }`}
+              >
                 <XCircle className="w-4 h-4 stroke-[2.5]" />
               </div>
             )}
             <h1
               className={`text-xl sm:text-2xl font-bold tracking-tight ${
-                isCorrect ? 'text-[var(--color-good-ink)]' : 'text-[var(--color-danger-ink)]'
+                isCorrect
+                  ? 'text-[var(--color-good-ink)]'
+                  : isPartial
+                  ? 'text-[var(--color-warning-ink)]'
+                  : 'text-[var(--color-danger-ink)]'
               }`}
             >
               {isCorrect
                 ? userName
                   ? `Nice catch, ${userName}! Sharp Review Judgment.`
                   : 'Bug Caught! Sharp Review Judgment.'
+                : isPartial
+                ? 'Right line, wrong fix.'
                 : 'Planted Bug Missed.'}
             </h1>
           </div>
 
           <p
             className={`text-sm ${
-              isCorrect ? 'text-[var(--color-good-ink)]/90' : 'text-[var(--color-danger-ink)]/90'
+              isCorrect
+                ? 'text-[var(--color-good-ink)]/90'
+                : isPartial
+                ? 'text-[var(--color-warning-ink)]/90'
+                : 'text-[var(--color-danger-ink)]/90'
             }`}
           >
             {isCorrect
               ? `You spotted the flaw and picked the verified fix. Concept scheduled for spaced recall in ${recallItem.interval} ${
                   recallItem.interval === 1 ? 'day' : 'days'
                 }.`
+              : isPartial
+              ? `You located the suspect line — but picked a fix that doesn't repair it. Streak preserved; the concept resurfaces in ${recallItem.interval} ${
+                  recallItem.interval === 1 ? 'day' : 'days'
+                }.`
               : 'The code contained a subtle edge-case defect. Scheduled to resurface in 1 day for reinforcement.'}
           </p>
+
+          {/* Locate-then-fix verdict chip */}
+          {format === 'locate-then-fix' && chosenLine !== null && typeof challenge.buggyLineAnswer === 'number' && (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--color-surface)] border border-[var(--color-border)] text-[11px] font-mono mt-1">
+              <Crosshair className="w-3.5 h-3.5 text-[var(--color-accent)]" />
+              <span className="text-[var(--color-muted)]">You picked</span>
+              <strong className="text-[var(--color-text)]">line {chosenLine}</strong>
+              <span className="text-[var(--color-muted)]">· correct was</span>
+              <strong
+                className={
+                  chosenLine === challenge.buggyLineAnswer
+                    ? 'text-[var(--color-good)]'
+                    : 'text-[var(--color-danger)]'
+                }
+              >
+                line {challenge.buggyLineAnswer}
+              </strong>
+            </div>
+          )}
+
+          {/* Score breakdown — tiny mono line beneath the verdict */}
+          {scoreBreakdown && (
+            <p className="text-[11px] font-mono text-[var(--color-muted)] pt-1 leading-relaxed break-words">
+              Base {scoreBreakdown.basePoints >= 0 ? '+' : ''}
+              {scoreBreakdown.basePoints}
+              {' × '}conf {scoreBreakdown.confidenceMultiplier}
+              {scoreBreakdown.basePoints >= 0 && (
+                <>
+                  {' × '}speed {scoreBreakdown.speedFactor}
+                  {' × '}combo {scoreBreakdown.comboMultiplier}
+                </>
+              )}
+              {' = '}
+              <strong
+                className={
+                  scoreBreakdown.score >= 0
+                    ? 'text-[var(--color-good)]'
+                    : 'text-[var(--color-danger)]'
+                }
+              >
+                {scoreBreakdown.score >= 0 ? '+' : ''}
+                {scoreBreakdown.score}
+              </strong>
+            </p>
+          )}
         </div>
 
-        {/* Schedule & Streak Badges */}
-        <div className="flex sm:flex-col items-center sm:items-end gap-3 shrink-0">
+        {/* Score / Combo / Schedule / Streak badges */}
+        <div className="flex sm:flex-col items-center sm:items-end gap-2.5 shrink-0 flex-wrap">
+          {scoreBreakdown && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-sm)] bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-mono">
+              <Zap className="w-3.5 h-3.5 text-[var(--color-accent)]" />
+              <span className="text-[var(--color-muted)]">Score:</span>
+              <strong
+                className={
+                  scoreBreakdown.score >= 0
+                    ? 'text-[var(--color-good)]'
+                    : 'text-[var(--color-danger)]'
+                }
+              >
+                {scoreBreakdown.score >= 0 ? '+' : ''}
+                {scoreBreakdown.score}
+              </strong>
+            </div>
+          )}
+
+          {typeof comboAfter === 'number' && comboAfter >= 2 && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-sm)] bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-mono">
+              <TrendingUp className="w-3.5 h-3.5 text-[var(--color-accent)]" />
+              <span className="text-[var(--color-text)] font-semibold">
+                Combo ×{Math.min(1 + 0.1 * comboAfter, 2).toFixed(1)}
+              </span>
+              <span className="text-[var(--color-muted)]">({comboAfter} in a row)</span>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-sm)] bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-mono">
             <Calendar className="w-3.5 h-3.5 text-[var(--color-accent)]" />
             <span className="text-[var(--color-muted)]">Next Recall:</span>

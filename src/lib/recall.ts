@@ -8,8 +8,12 @@ export function getSimulatedNow(offsetDays: number = 0): number {
   return Date.now() + offsetDays * ONE_DAY_MS;
 }
 
-export function computeNextInterval(currentInterval: 1 | 3 | 7 | 14 | 30, correct: boolean): 1 | 3 | 7 | 14 | 30 {
-  if (!correct) return 1;
+export function computeNextInterval(
+  currentInterval: 1 | 3 | 7 | 14 | 30,
+  outcome: 0 | 0.5 | 1,
+): 1 | 3 | 7 | 14 | 30 {
+  if (outcome === 0) return 1;
+  if (outcome === 0.5) return currentInterval; // partial credit: hold interval
   const currentIndex = INTERVAL_LADDER.indexOf(currentInterval);
   if (currentIndex === -1 || currentIndex >= INTERVAL_LADDER.length - 1) {
     return 30;
@@ -23,12 +27,17 @@ export function calculateRecallSchedule(
   concept: string,
   videoId: string,
   attempt: Attempt,
-  offsetDays: number = 0
+  offsetDays: number = 0,
+  outcome?: 0 | 0.5 | 1,
 ): RecallItem {
   const now = getSimulatedNow(offsetDays);
+  // Phase 8 v1 — accept explicit outcome (0 / 0.5 / 1) so partial credit from
+  // locate-then-fix preserves the streak and holds the interval. Fallback to
+  // the pre-v1 behaviour for callers that only pass `attempt.correct`.
+  const effective: 0 | 0.5 | 1 = outcome ?? (attempt.correct ? 1 : 0);
 
   if (!existingItem) {
-    const interval: 1 | 3 | 7 | 14 | 30 = attempt.correct ? 1 : 1;
+    const interval: 1 | 3 | 7 | 14 | 30 = 1; // first touch always short-horizon
     const nextReviewAt = now + interval * ONE_DAY_MS;
     return {
       challengeId,
@@ -37,14 +46,17 @@ export function calculateRecallSchedule(
       interval,
       nextReviewAt,
       lastReviewedAt: now,
-      streak: attempt.correct ? 1 : 0,
+      streak: effective === 1 ? 1 : 0,
       history: [attempt],
     };
   }
 
-  const nextInterval = computeNextInterval(existingItem.interval, attempt.correct);
+  const nextInterval = computeNextInterval(existingItem.interval, effective);
   const nextReviewAt = now + nextInterval * ONE_DAY_MS;
-  const newStreak = attempt.correct ? existingItem.streak + 1 : 0;
+  const newStreak =
+    effective === 1 ? existingItem.streak + 1
+    : effective === 0.5 ? existingItem.streak
+    : 0;
 
   return {
     ...existingItem,

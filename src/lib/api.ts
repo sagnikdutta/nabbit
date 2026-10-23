@@ -1,8 +1,41 @@
-import { Video, Challenge, Attempt, RecallItem, RecallStats, UserAccount, AuthResponse } from './types';
+import {
+  Video,
+  Challenge,
+  Attempt,
+  AttemptInput,
+  Confidence,
+  RecallItem,
+  RecallStats,
+  ScoreBreakdown,
+  UserAccount,
+  AuthResponse,
+} from './types';
 import { CURATED_VIDEOS, CURATED_CHALLENGES } from '../content/data';
 import { calculateRecallSchedule, computeStats, getSimulatedNow } from './recall';
+import { grade, computeScore } from './grading';
 import { extractYouTubeVideoId, generateFallbackPastedPack } from './youtube';
 import { supabase, isSupabaseConfigured, mapSupabaseUser } from './supabase';
+
+// Phase 8 v1 — attempt submission context. Confidence/time/combo come from the UI,
+// never affect SRS, and only confidence × time × combo scales the score (see grading.ts).
+export interface AttemptMeta {
+  confidence: Confidence;
+  timeMs: number;
+  /** Pre-attempt combo state (0 for the first attempt in a session, N after N consecutive full-corrects). */
+  combo: number;
+}
+
+export interface AttemptResult {
+  attempt: Attempt;
+  correct: boolean;             // full-correct only (partial credit → false, see outcome for the real signal)
+  outcome: 0 | 0.5 | 1;
+  explanation: string;
+  recallItem: RecallItem;
+  stats: RecallStats;
+  score: number;
+  scoreBreakdown: ScoreBreakdown;
+  comboAfter: number;           // 0 if wrong, prev+1 if correct, prev if partial
+}
 
 const LOCAL_STORAGE_KEY_ITEMS = 'nabbit_recall_items_v1';
 const LOCAL_STORAGE_KEY_ATTEMPTS = 'nabbit_attempts_v1';
@@ -266,24 +299,41 @@ class LocalStore {
     return this.items;
   }
 
-  public recordAttempt(challengeId: string, chosen: number): {
-    attempt: Attempt;
-    correct: boolean;
-    explanation: string;
-    recallItem: RecallItem;
-    stats: RecallStats;
-  } {
+  public recordAttempt(challengeId: string, input: AttemptInput, meta: AttemptMeta): AttemptResult {
     const challenge = this.getChallenge(challengeId);
     if (!challenge) {
       throw new Error(`Challenge not found: ${challengeId}`);
     }
 
-    const correct = chosen === challenge.correctOption;
+    // Grade deterministically — same code path client-side today, server-side later.
+    const g = grade(challenge, input);
+
+    // Combo advances only on full-correct; partial credit holds, wrong resets.
+    const comboAfter = g.outcome === 1
+      ? meta.combo + 1
+      : g.outcome === 0.5 ? meta.combo
+      : 0;
+
+    const breakdown = computeScore(g, challenge, { ...meta, comboAfter });
+
+    // `chosen` stays the primary surface for back-compat; formats without a single chosen (rank-fixes) use -1.
+    const chosen =
+      input.format === 'spot-fix' || input.format === 'locate-then-fix'
+        ? input.chosen
+        : -1;
+
     const attempt: Attempt = {
       challengeId,
       chosen,
-      correct,
+      correct: g.correct,
       at: getSimulatedNow(this.offsetDays),
+      format: input.format,
+      confidence: meta.confidence,
+      timeMs: meta.timeMs,
+      score: breakdown.score,
+      comboAtTime: comboAfter,
+      outcome: g.outcome,
+      input,
     };
     this.attempts.push(attempt);
 
@@ -296,7 +346,8 @@ class LocalStore {
       challenge.concept,
       challenge.videoId,
       attempt,
-      this.offsetDays
+      this.offsetDays,
+      g.outcome,
     );
 
     if (existingIndex >= 0) {
@@ -310,10 +361,14 @@ class LocalStore {
 
     return {
       attempt,
-      correct,
+      correct: g.correct,
+      outcome: g.outcome,
       explanation: challenge.explanation,
       recallItem: updatedRecall,
       stats,
+      score: breakdown.score,
+      scoreBreakdown: breakdown,
+      comboAfter,
     };
   }
 
@@ -719,8 +774,8 @@ export const api = {
     return localStore.getChallenge(challengeId) || null;
   },
 
-  async submitAttempt(challengeId: string, chosen: number) {
-    return localStore.recordAttempt(challengeId, chosen);
+  async submitAttempt(challengeId: string, input: AttemptInput, meta: AttemptMeta): Promise<AttemptResult> {
+    return localStore.recordAttempt(challengeId, input, meta);
   },
 
   async getRecallDashboard() {

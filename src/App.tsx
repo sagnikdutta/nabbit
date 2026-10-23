@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from './lib/api';
-import { Video, Challenge, RecallItem, RecallStats } from './lib/types';
+import { Video, Challenge, RecallItem, RecallStats, AttemptInput, Confidence } from './lib/types';
+import { grade } from './lib/grading';
 import {
   getRemindersEnabled,
   setRemindersEnabled,
@@ -111,6 +112,11 @@ export default function App() {
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signup');
   // Set when a signed-out visitor finishes a trial challenge: sends them to sign up.
   const [trialResult, setTrialResult] = useState<{ correct: boolean; concept: string } | null>(null);
+
+  // Phase 8 v1 — session combo. Chain of consecutive full-corrects in the
+  // current challenge-browsing session. Resets when the user leaves the
+  // challenge screen or signs out.
+  const [combo, setCombo] = useState(0);
 
   // Subscribe to auth changes
   useEffect(() => {
@@ -291,21 +297,27 @@ export default function App() {
     go('challenge', challengeId);
   };
 
-  const handleSubmitAttempt = async (chosen: number) => {
+  const handleSubmitAttempt = async (
+    input: AttemptInput,
+    meta: { confidence: Confidence; timeMs: number },
+  ) => {
     // Trial mode (signed out): grade locally, save nothing, send them to sign up.
     if (!currentUser) {
       const trial = challenges.find(c => c.id === activeChallengeId);
       if (trial) {
-        const correct = chosen === trial.correctOption;
-        trackTrialCompleted(trial.id, correct);
-        setTrialResult({ correct, concept: trial.concept });
+        const g = grade(trial, input);
+        trackTrialCompleted(trial.id, g.correct);
+        setTrialResult({ correct: g.correct, concept: trial.concept });
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
       // The challenge screen is replaced by the sign-up screen, so this never needs to resolve.
       return new Promise<never>(() => {});
     }
 
-    const result = await api.submitAttempt(activeChallengeId, chosen);
+    const result = await api.submitAttempt(activeChallengeId, input, { ...meta, combo });
+
+    // Mirror the authoritative combo state after the server-side-ready grading.
+    setCombo(result.comboAfter);
 
     // Refresh dashboard stats; the challenge screen reveals the result in place.
     const dashboard = await api.getRecallDashboard();
@@ -321,8 +333,12 @@ export default function App() {
 
     return {
       correct: result.correct,
+      outcome: result.outcome,
       explanation: result.explanation,
       recallItem: result.recallItem,
+      score: result.score,
+      scoreBreakdown: result.scoreBreakdown,
+      comboAfter: result.comboAfter,
     };
   };
 
@@ -380,6 +396,15 @@ export default function App() {
     : route === 'auth'
     ? 'library'
     : route;
+
+  // Phase 8 v1 — reset the session combo when the user leaves the challenge screen
+  // (switching to the Library/Recall/Auth breaks the chain). Also resets on sign-out.
+  useEffect(() => {
+    if (activeRoute !== 'challenge') setCombo(0);
+  }, [activeRoute]);
+  useEffect(() => {
+    if (!currentUser) setCombo(0);
+  }, [currentUser?.id]);
 
   // Trial-link lead capture: remember which shared challenge a signed-out visitor opened.
   useEffect(() => {

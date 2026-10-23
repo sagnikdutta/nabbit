@@ -65,6 +65,7 @@ export const CURATED_CHALLENGES: Challenge[] = [
       inspectionClue: 'Inspect lines 6-7 inside handleIncrementTwice. How do you instruct React to chain updates against pending state?',
     },
     buggyLines: [7],
+    buggyLineAnswer: 7, // Phase 8 v1 — enables Locate-then-fix on this drill
     buggyCode: `function Counter() {
   const [count, setCount] = useState(0);
 
@@ -291,6 +292,7 @@ function UserCard({ userId, onDelete }: UserCardProps) {
       inspectionClue: 'Look at lines 4-7: userIds.forEach(async ...) fires promises in the background and immediately moves to the following console.log.',
     },
     buggyLines: [5],
+    buggyLineAnswer: 5, // Phase 8 v1 — enables Locate-then-fix on this drill
     buggyCode: `async function syncDatabaseUsers(userIds: string[]) {
   console.log("Starting batch sync...");
 
@@ -436,6 +438,7 @@ function UserCard({ userId, onDelete }: UserCardProps) {
       inspectionClue: 'Look at line 7: setSeconds(seconds + 1) captures seconds as 0 forever. Use a functional updater instead.',
     },
     buggyLines: [7],
+    buggyLineAnswer: 7, // Phase 8 v1 — enables Locate-then-fix on this drill
     buggyCode: `function AutoSavingTimer() {
   const [seconds, setSeconds] = useState(0);
 
