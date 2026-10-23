@@ -13,8 +13,8 @@
 
 | Visitor | Home | Challenges | Spaced Recall | Progress saved? |
 |---|---|---|---|---|
-| **Signed out** | Landing page (pitch + curated packs, no progress) | **Public trial** — open any drill / shared dare, no login | Hidden | **No** |
-| **Signed in** | Dashboard (Today card, stats, library, collapsed YouTube import) | Full | Yes | Yes (this browser — see open items) |
+| **Signed out** | Landing page (pitch + curated packs, no progress; **Create free account** + **Try a free bug hunt** CTAs; navbar **Sign up free** / Sign in) | **Public trial** — open any drill / shared dare, no login | Hidden | **No** |
+| **Signed in** | Dashboard (Today card, stats, library, collapsed YouTube import) | Full | Yes | Yes — per account, in this browser (see open items) |
 
 Finishing a **trial** drill grades it locally, saves nothing, and sends the visitor
 to **sign-up** (banner: "Nice catch!" / "Not quite" + "create an account to see the
@@ -86,9 +86,18 @@ days later. Reachable via LinkedIn/X, dev communities, and her team.
   Start review*, or *Continue* when nothing is due — three quiet stats, in-progress
   packs first, YouTube import collapsed) · Recall dashboard · time-travel simulator
   (demo device to show resurfacing without waiting days).
-- **Accounts:** email + password (+ phone) via Supabase Auth; every registration is
-  mirrored into `public.users` by a DB trigger. Spaced Recall and the streak are
-  members-only.
+- **Accounts:** email + password (+ **optional** phone) via Supabase Auth; every
+  registration is mirrored into `public.users` by a DB trigger. Spaced Recall and the
+  streak are members-only. Auth errors are shown in plain product language (e.g.
+  "Please use a valid email address from a real domain"), and no screen names the
+  auth provider.
+- **Fresh start:** a new account begins at zero (no pre-filled progress); the Today
+  card reads "Ready for your first bug hunt?" with a **Start** button. Progress is tied
+  to the account that created it, so a different account on the same browser starts
+  clean.
+- **No verification UI:** the demo "enter codes" flow, "Pending" labels and banner were
+  removed; demo/test users can sign up with any real-domain address when email
+  confirmation is off in the auth settings.
 - **Metrics:** **revisit rate (north-star)** · streak length · D1/D7 return.
 - **Drop-off risks:** no reminder channel; static-feeling dashboard; nothing new
   to return for.
@@ -171,33 +180,42 @@ days later. Reachable via LinkedIn/X, dev communities, and her team.
 
 **Done:** Supabase Auth + `public.users` mirror (`0001`) · signed-out trial mode ·
 signup redirect after a trial drill · signed-in dashboard · UTM-tagged share links ·
-`public.leads` capture (`0002`) · sharer ref + `lead_sharers` view (`0003`).
+`public.leads` capture (`0002`) · sharer ref + `lead_sharers` view (`0003`) ·
+landing CTAs (Create free account / Sign up free) · optional phone · friendly,
+provider-free auth errors · new accounts start at zero · per-account progress on a
+shared browser · verification banner/labels/drawer removed from the UI · deployed on
+Vercel with the Supabase env vars.
 
 **Open / mismatching**
-1. **Migrations:** confirm `0002_leads.sql` and `0003_leads_sharer_ref.sql` have been
-   run in the nabbit Supabase project (`0003` must run before the new share links work).
+1. **Migrations / settings:** `0002` and `0003` were run manually; confirm via an
+   end-to-end test (signup → `public.users` row; trial link → `leads` row). The auth
+   "Confirm email" setting is off for demo — **turn it back on (and add CAPTCHA)
+   before a real launch**, and add a "check your email" notice at that point.
 2. **Explanation behind sign-up vs. "no gate before value":** trial users never see
    the *why* unless they register. Decide: keep (stronger conversion) or show the
    reveal first and put the sign-up prompt on its buttons.
 3. **Progress is not in Supabase yet.** Attempts and recall items still live in
-   browser `localStorage`; only identity is in Supabase. So: no cross-device sync
-   (the sign-in copy "sync your spaced-recall progress across devices" is
-   inaccurate), and two accounts on one browser share the same local progress.
-   The planned `attempts` / `recall_items` tables are still pending (build-plan Phase 7).
-4. **New accounts start with seeded demo progress** (solved packs, a due item) from
-   the local seed — a fresh user should start at zero.
-5. **Verification is half-real:** email confirmation is Supabase's; phone
-   verification has no SMS provider; the "Enter Codes" banner / drawer still reflect
-   the old demo-code flow. Also pending: the "Signed in successfully…" banner and a
-   resend-confirmation button.
+   browser `localStorage`; only identity is in Supabase. So: **no cross-device sync**
+   (the sign-in copy no longer promises it), and progress is isolated per account only
+   within one browser — clearing site data loses it. The planned `attempts` /
+   `recall_items` tables are still pending (build-plan Phase 7).
+4. ~~New accounts start with seeded demo progress~~ — **fixed**. Browsers that already
+   hold old demo data keep it until **Reset** (Recall page) or clearing site data.
+5. **Verification is minimal:** the UI was removed; email confirmation (when enabled)
+   is the auth provider's own, and phone verification has no SMS provider. Pending:
+   a resend-confirmation affordance and a post-signup notice if confirmation is
+   switched back on. The old verify/resend code in `api.ts` and
+   `VerificationDrawer.tsx` is now unused.
 6. **Premium vs. free:** build-plan has paste-any-video as a *disabled Pro teaser*,
    but the YouTube importer is live for every signed-in user — decide whether it
    stays free or moves behind Pro.
 7. **Leftovers:** local/Express mock auth (`/api/auth/*`, demo sign-in fill) is still
-   in the code as a fallback; the NameOnboarding prompt is effectively dormant;
-   landing hero still carries the "HelloPM Buildathon Entry" label.
-8. **Per-challenge OG previews** need the Node server (static hosts serve the
-   generic page) — unchanged from build-plan B4.
+   in the code as a fallback; the NameOnboarding prompt is effectively dormant. (The
+   "HelloPM Buildathon Entry" hero label was removed.)
+8. **Vercel limits:** per-challenge OG previews and the **YouTube importer** (Gemini
+   call lives in `server.ts`) don't run on the static deploy — the importer needs a
+   serverless function (`GEMINI_API_KEY` as a non-`VITE_` env var); previews need an
+   edge/serverless OG function.
 
 ---
 

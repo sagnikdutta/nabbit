@@ -1,6 +1,6 @@
 import { Video, Challenge, Attempt, RecallItem, RecallStats, UserAccount, AuthResponse } from './types';
 import { CURATED_VIDEOS, CURATED_CHALLENGES } from '../content/data';
-import { calculateRecallSchedule, computeStats, getInitialSeedRecall, getSimulatedNow } from './recall';
+import { calculateRecallSchedule, computeStats, getSimulatedNow } from './recall';
 import { extractYouTubeVideoId, generateFallbackPastedPack } from './youtube';
 import { supabase, isSupabaseConfigured, mapSupabaseUser } from './supabase';
 
@@ -9,6 +9,7 @@ const LOCAL_STORAGE_KEY_ATTEMPTS = 'nabbit_attempts_v1';
 const LOCAL_STORAGE_KEY_OFFSET = 'nabbit_simulated_offset_v1';
 const LOCAL_STORAGE_KEY_PROFILE = 'nabbit_profile_v1';
 const LOCAL_STORAGE_KEY_AUTH = 'nabbit_auth_user_v1';
+const LOCAL_STORAGE_KEY_PROGRESS_OWNER = 'nabbit_progress_owner_v1';
 const LOCAL_STORAGE_KEY_CUSTOM_VIDEOS = 'nabbit_custom_videos_v1';
 const LOCAL_STORAGE_KEY_CUSTOM_CHALLENGES = 'nabbit_custom_challenges_v1';
 
@@ -65,9 +66,9 @@ class LocalStore {
         this.items = JSON.parse(storedItems);
         this.attempts = JSON.parse(storedAttempts);
       } else {
-        const seed = getInitialSeedRecall();
-        this.items = seed.items;
-        this.attempts = seed.attempts;
+        // New browsers start at zero — no pre-filled demo progress.
+        this.items = [];
+        this.attempts = [];
         this.save();
       }
 
@@ -99,9 +100,8 @@ class LocalStore {
         this.customChallenges = JSON.parse(storedCustomChallenges);
       }
     } catch {
-      const seed = getInitialSeedRecall();
-      this.items = seed.items;
-      this.attempts = seed.attempts;
+      this.items = [];
+      this.attempts = [];
     }
 
     // Initialize Supabase session synchronization if configured
@@ -110,6 +110,7 @@ class LocalStore {
         if (data.session?.user) {
           const mapped = mapSupabaseUser(data.session.user);
           mapped.provider = 'supabase';
+          this.claimProgress(mapped);
           this.currentUser = mapped;
           this.save();
           this.notifyAuthListeners();
@@ -122,6 +123,7 @@ class LocalStore {
         if (session?.user) {
           const mapped = mapSupabaseUser(session.user);
           mapped.provider = 'supabase';
+          this.claimProgress(mapped);
           this.currentUser = mapped;
           if (!this.profile.name && mapped.email) {
             const defaultName = mapped.email.split('@')[0].replace(/[._-]/g, ' ');
@@ -161,7 +163,28 @@ class LocalStore {
     return this.currentUser ? { ...this.currentUser } : null;
   }
 
+  /**
+   * Progress is stored per browser, so tie it to the account that created it: when a
+   * different account signs in on the same browser, start that account from zero
+   * instead of inheriting the previous person's streak and solved concepts.
+   */
+  private claimProgress(user: UserAccount) {
+    try {
+      const owner = localStorage.getItem(LOCAL_STORAGE_KEY_PROGRESS_OWNER);
+      if (owner && owner !== user.id) {
+        this.items = [];
+        this.attempts = [];
+        this.offsetDays = 0;
+        this.profile = { name: '', onboarded: false };
+      }
+      localStorage.setItem(LOCAL_STORAGE_KEY_PROGRESS_OWNER, user.id);
+    } catch {
+      // storage unavailable — nothing to isolate
+    }
+  }
+
   public setCurrentUser(user: UserAccount | null) {
+    if (user) this.claimProgress(user);
     this.currentUser = user;
     if (user && !this.profile.name) {
       const defaultName = user.email.split('@')[0].replace(/[._-]/g, ' ');
@@ -315,9 +338,8 @@ class LocalStore {
   }
 
   public reset() {
-    const seed = getInitialSeedRecall();
-    this.items = seed.items;
-    this.attempts = seed.attempts;
+    this.items = [];
+    this.attempts = [];
     this.offsetDays = 0;
     this.save();
   }

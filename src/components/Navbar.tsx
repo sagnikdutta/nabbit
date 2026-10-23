@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Target, Moon, Sun, Flame, User, LogIn, LogOut, ShieldCheck, AlertCircle, ChevronDown, CheckCircle2 } from 'lucide-react';
+import { Target, Moon, Sun, Flame, LogIn, LogOut, ChevronDown } from 'lucide-react';
 import { UserAccount } from '../lib/types';
 
 export interface NavbarProps {
@@ -11,7 +11,6 @@ export interface NavbarProps {
   onToggleTheme: () => void;
   currentUser?: UserAccount | null;
   onOpenAuth: (mode?: 'signin' | 'signup') => void;
-  onOpenVerification: () => void;
   onSignOut: () => void;
 }
 
@@ -24,7 +23,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleTheme,
   currentUser,
   onOpenAuth,
-  onOpenVerification,
   onSignOut,
 }) => {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -39,9 +37,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const isVerified = currentUser && currentUser.emailVerified && currentUser.phoneVerified;
-  const isPartiallyVerified = currentUser && (!currentUser.emailVerified || !currentUser.phoneVerified);
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-[var(--color-border)] bg-[var(--color-surface)]/90 backdrop-blur-md">
@@ -156,12 +151,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="hidden md:inline font-mono text-[11px] max-w-[110px] truncate">
                   {currentUser.email.split('@')[0]}
                 </span>
-                {isPartiallyVerified && (
-                  <span className="w-2 h-2 rounded-full bg-amber-500" title="Background verification pending" />
-                )}
-                {isVerified && (
-                  <CheckCircle2 className="w-3 h-3 text-[var(--color-good)] shrink-0" />
-                )}
                 <ChevronDown className="w-3 h-3 text-[var(--color-muted)]" />
               </button>
 
@@ -172,46 +161,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <p className="font-semibold text-[var(--color-text)] truncate">
                       {currentUser.email}
                     </p>
-                    <p className="text-[11px] font-mono text-[var(--color-muted)] truncate">
-                      {currentUser.phoneNumber}
-                    </p>
-                    {currentUser.provider === 'supabase' && (
-                      <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-mono mt-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        <span>Signed in</span>
-                      </div>
+                    {currentUser.phoneNumber && (
+                      <p className="text-[11px] font-mono text-[var(--color-muted)] truncate">
+                        {currentUser.phoneNumber}
+                      </p>
                     )}
                   </div>
 
-                  {/* Verification Status */}
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-[var(--color-muted)]">Email:</span>
-                      <span className={currentUser.emailVerified ? 'text-[var(--color-good)] font-medium flex items-center gap-0.5' : 'text-amber-500 font-medium'}>
-                        {currentUser.emailVerified ? '✓ Verified' : 'Pending in bg'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-[var(--color-muted)]">Phone:</span>
-                      <span className={currentUser.phoneVerified ? 'text-[var(--color-good)] font-medium flex items-center gap-0.5' : 'text-amber-500 font-medium'}>
-                        {currentUser.phoneVerified ? '✓ Verified' : 'Pending in bg'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-t border-[var(--color-border)] space-y-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setProfileMenuOpen(false);
-                        onOpenVerification();
-                      }}
-                      className="w-full text-left px-2 py-1.5 rounded-[var(--radius-sm)] text-[var(--color-accent)] hover:bg-[var(--color-accent-weak)] transition-colors flex items-center gap-2 cursor-pointer font-medium"
-                    >
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>{isVerified ? 'View Verification Details' : 'Enter Verification Codes'}</span>
-                    </button>
-
                     <button
                       type="button"
                       onClick={() => {

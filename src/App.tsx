@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from './lib/api';
 import { Video, Challenge, RecallItem, RecallStats } from './lib/types';
 import {
@@ -17,9 +17,7 @@ import { RecallDashboardScreen } from './screens/RecallDashboardScreen';
 
 import { AuthScreen } from './screens/AuthScreen';
 import { trackTrialView, trackTrialCompleted, claimLeads } from './lib/leads';
-import { VerificationDrawer } from './components/VerificationDrawer';
 import { UserAccount } from './lib/types';
-import { ShieldCheck, X } from 'lucide-react';
 
 type Route = 'library' | 'challenge' | 'recall' | 'auth';
 
@@ -110,8 +108,6 @@ export default function App() {
 
   // User Authentication & Background Verification State
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => api.getCurrentUser());
-  const [isVerificationOpen, setIsVerificationOpen] = useState(false);
-  const [backgroundNotice, setBackgroundNotice] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signup');
   // Set when a signed-out visitor finishes a trial challenge: sends them to sign up.
   const [trialResult, setTrialResult] = useState<{ correct: boolean; concept: string } | null>(null);
@@ -122,6 +118,18 @@ export default function App() {
       setCurrentUser(user);
     });
   }, []);
+
+  // Progress belongs to the signed-in account: reload it (and the display name) whenever
+  // the user changes, so one person's stats never linger for the next.
+  const lastUserId = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const id = currentUser?.id ?? null;
+    if (lastUserId.current !== undefined && lastUserId.current !== id) {
+      loadData();
+      setProfileName(api.getProfile().name);
+    }
+    lastUserId.current = id;
+  }, [currentUser?.id]);
 
   // Apply data-theme attribute on root element
   useEffect(() => {
@@ -260,36 +268,16 @@ export default function App() {
     go('auth');
   };
 
-  const handleOpenVerification = () => {
-    setIsVerificationOpen(true);
-  };
-
   const handleSignOut = () => {
     api.signOut();
-    setBackgroundNotice(null);
   };
 
-  const handleAuthSuccess = (user: UserAccount, notice?: string) => {
+  const handleAuthSuccess = (user: UserAccount) => {
     setCurrentUser(user);
     setTrialResult(null);
     claimLeads();
-    if (notice) {
-      setBackgroundNotice(notice);
-    }
     // Land on the library after sign-in, unless they came in via a deep link (e.g. a shared dare).
     if (route === 'auth') go('library');
-  };
-
-  const handleVerifyContact = async (type: 'email' | 'phone', code: string) => {
-    if (!currentUser) return;
-    const res = await api.verifyContact(currentUser.id, type, code);
-    setCurrentUser(res.user);
-  };
-
-  const handleResendVerification = async (type: 'email' | 'phone') => {
-    if (!currentUser) return;
-    const res = await api.resendVerification(currentUser.id, type);
-    setCurrentUser(res.user);
   };
 
   const handleSelectVideo = (videoId: string) => {
@@ -432,17 +420,6 @@ export default function App() {
         onSkip={handleSkipOnboarding}
       />
 
-      {/* Verification Drawer / Modal */}
-      {currentUser && (
-        <VerificationDrawer
-          user={currentUser}
-          isOpen={isVerificationOpen}
-          onClose={() => setIsVerificationOpen(false)}
-          onVerify={handleVerifyContact}
-          onResend={handleResendVerification}
-        />
-      )}
-
       {/* 3-Zone Top Navigation Bar */}
       <Navbar
         currentRoute={activeRoute}
@@ -453,41 +430,11 @@ export default function App() {
         onToggleTheme={toggleTheme}
         currentUser={currentUser}
         onOpenAuth={handleOpenAuth}
-        onOpenVerification={handleOpenVerification}
         onSignOut={handleSignOut}
       />
 
       {/* Main Content Viewport */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-6 pb-12">
-        {/* Background verification notice banner */}
-        {backgroundNotice && (
-          <div className="mb-6 rounded-[var(--radius)] border border-[var(--color-accent-border)] bg-[var(--color-accent-weak)] px-4 py-3 flex items-center justify-between gap-3 text-xs shadow-[var(--shadow-sm)]">
-            <div className="flex items-center gap-2.5">
-              <ShieldCheck className="w-4 h-4 text-[var(--color-accent)] shrink-0" />
-              <p className="text-[var(--color-text)]">
-                {backgroundNotice}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={handleOpenVerification}
-                className="px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--color-accent)] text-white font-medium hover:opacity-90 transition-opacity cursor-pointer text-[11px]"
-              >
-                Enter Codes
-              </button>
-              <button
-                type="button"
-                onClick={() => setBackgroundNotice(null)}
-                aria-label="Dismiss banner"
-                className="text-[var(--color-muted)] hover:text-[var(--color-text)] cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
-
         {activeRoute === 'auth' && (
           <AuthScreen
             key={authMode}

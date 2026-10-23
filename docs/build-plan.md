@@ -51,10 +51,14 @@ Scaffold · core loop · persistence + recall · library + nav · content (React
 - **Supabase Auth** (email + password, phone as metadata) in `src/lib/supabase.ts` + `api.signUp/signIn/signOut`; falls back to local/mock auth when keys are missing.
 - **`0001_users.sql`** — `public.users` mirrors `auth.users` via triggers (insert → row, update → email/verified flags), RLS: users read/update only their own row; backfill included. ✅ verified (registration row + login confirmed).
 - **Auth-aware routing** (table above). Signed-out visitors get the landing page and public **trial** drills; finishing a trial drill → sign-up with a verdict-only banner; after sign-up they return to that drill.
-- **Signed-in dashboard** — `LibraryScreen mode="dashboard"`: Today card (N due → Start review, else Continue), 3 stats, in-progress packs first, collapsed YouTube import. Landing keeps the hero; the "YouTube URL Import Active" block and footer taglines were removed.
+- **Signed-in dashboard** — `LibraryScreen mode="dashboard"`: Today card (N due → Start review; else Continue; "Ready for your first bug hunt? → Start" at zero), 3 stats, in-progress packs first, collapsed YouTube import. Landing keeps the hero, now with **Create free account** / **Try a free bug hunt** CTAs and a **Sign up free** / Sign in navbar; the buildathon label, "YouTube URL Import Active" block and footer taglines were removed.
+- **Auth polish (23 Oct):** phone is **optional**; auth errors go through `friendlyAuthError()` in `api.ts` (plain product language; raw error only in the console); no user-facing text names the auth provider.
+- **Fresh start + per-account progress:** the demo seed is no longer loaded (new browsers and **Reset** start empty). `LocalStore.claimProgress()` stores a `nabbit_progress_owner_v1` key; a different account signing in on the same browser starts clean, and `App.tsx` reloads data/name when the user changes. *Browsers holding old seeded data keep it until Reset / clearing site data.*
+- **Verification UI removed:** banner, "Pending" labels, amber/green dots, profile-menu item and `VerificationDrawer` are no longer rendered (code left in place: `VerificationDrawer.tsx`, `verifyContact` / `resendVerification` in `api.ts`).
+- **Deployed:** Vercel (`nabbit-ten.vercel.app`) with `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` as Config vars; migrations `0002`/`0003` run manually; "Confirm email" off for demo users; Site URL + redirect URLs set.
 - **`0002_leads.sql`** — `public.leads` (one row per visitor × challenge: visitor id, challenge id, UTM, referrer, completed/correct, converted user). No direct table access; written via `log_lead` / `complete_lead` / `claim_leads` RPCs (security definer).
 - **`0003_leads_sharer_ref.sql`** — adds `sharer_ref` + new `log_lead` signature + `lead_sharers` view. Share links now carry `utm_source=share&utm_medium=bug-dare&utm_campaign=dare-<id>&ref=<sha256(user id)[:10]>`.
-- ⬜ **Run `0002` and `0003`** in the nabbit Supabase project (0003 before using new share links) and re-test a trial link end to end.
+- ✅ `0002` and `0003` run in the nabbit Supabase project (manually). ⬜ End-to-end re-test on the live site (signup → `public.users`; trial link → `leads`) is on the owner's list.
 
 ## Recently shipped ✅ (all verified in-browser)
 - **B1 — inline reveal** (`phase: answering → revealed`, same-page; separate Reveal route dropped).
@@ -121,10 +125,12 @@ Pipeline: paste URL → fetch transcript + metadata → detect concept → gener
 ✅ Done: Supabase Auth, `public.users`, `public.leads`, auth-aware routing (see "Accounts & leads").
 
 ⬜ Pending:
-- **Progress sync:** `attempts` / `recall_items` still live only in browser localStorage → no cross-device sync, and two accounts on one browser share progress. Needs the **store interface** with `localStore` + `supabaseStore` adapters (`localStore` is already an abstraction).
+- **Progress sync:** `attempts` / `recall_items` still live only in browser localStorage → no cross-device sync (progress is isolated per account within one browser, but clearing site data loses it). Needs the **store interface** with `localStore` + `supabaseStore` adapters (`localStore` is already an abstraction).
 - **Sync model (changed):** activation is no longer fully login-free — **trial drills are public but unsaved**; saving progress requires an account. Decide whether to push existing local progress up on first sign-in.
-- **New accounts start with seeded demo progress** (local seed) — should start at zero.
-- **Verification:** phone has no SMS provider; the "Enter Codes" banner/drawer and "Signed in successfully…" banner are leftovers from the demo-code flow; add resend-confirmation handling.
+- ~~New accounts start with seeded demo progress~~ — **done** (new accounts start at zero).
+- **Verification:** UI removed (see above); phone still has no SMS provider. When email confirmation is re-enabled for launch, add a "check your email" notice and a resend-confirmation button, and delete the unused verify/resend code.
+- **Launch hardening:** turn "Confirm email" back on and add CAPTCHA (currently off so demo users can sign up with any real-domain address).
+- **Vercel serverless:** move the Gemini importer call from `server.ts` into a Vercel function (`api/`), with `GEMINI_API_KEY` as a non-`VITE_` variable; per-challenge OG previews need an edge/serverless function too.
 - **Decision:** the trial reveal gates the *explanation* behind sign-up (conflicts with "no gate before value" in `user-journey.md`) — keep or show the reveal first.
 - **Remove legacy mock auth** (`/api/auth/*` in `server.ts`, demo sign-in fill) once Supabase is the only path.
 - **Schema sketch:**
@@ -148,6 +154,6 @@ PR-review format → more judgment formats (predict-output, tradeoff, drag-drop 
 - ✅ Accessibility pass (`aria-current`/`aria-pressed`, labels on icon-only controls, `sr-only` state cues, global `:focus-visible`).
 - ✅ Loading/error states (challenge-route loading guard; thumbnail `onError` fallback).
 - ✅ Demo-reset action (Recall dashboard).
-- ⬜ **Remaining (operational):** final hosted deploy + a screen-recording backup of the 5-minute demo. Deploy now also needs the two `VITE_SUPABASE_*` env vars and the three SQL migrations applied.
+- ✅ Hosted deploy on Vercel (with the two `VITE_SUPABASE_*` vars and the SQL migrations applied). ⬜ **Remaining (operational):** a screen-recording backup of the 5-minute demo.
 
 **Acceptance:** runs cold in incognito, on phone and laptop; every button works; demo rehearsed once.
