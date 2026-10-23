@@ -1,5 +1,6 @@
 import { Attempt, RecallItem, RecallStats } from './types';
 import { CURATED_CHALLENGES } from '../content/data';
+import { getFreezeState, weekStartISO } from './streak-freeze';
 
 const INTERVAL_LADDER: (1 | 3 | 7 | 14 | 30)[] = [1, 3, 7, 14, 30];
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -87,14 +88,30 @@ export function computeStats(items: RecallItem[], attempts: Attempt[], offsetDay
   const revisitedCount = items.filter(item => item.history.length > 1).length;
   const revisitRate = totalSolved > 0 ? Math.round((revisitedCount / totalSolved) * 100) : 0;
 
-  // Streak: consecutive successful attempts ending at most recent
+  // Streak: consecutive successful attempts ending at most recent.
+  // Phase 8 v1 — one wrong attempt per ISO-week is freeze-protected if the
+  // user's weekly freeze was consumed; see src/lib/streak-freeze.ts.
+  // The freeze absorbs the CHRONOLOGICALLY-FIRST wrong attempt in the week
+  // (the one that originally would have broken the streak), not the latest.
+  const freeze = getFreezeState(now);
+  const currentWeek = freeze.weekStart;
+  let absorbedIdx = -1;
+  if (freeze.used) {
+    for (let i = 0; i < attempts.length; i++) {
+      if (!attempts[i].correct && weekStartISO(attempts[i].at) === currentWeek) {
+        absorbedIdx = i;
+        break;
+      }
+    }
+  }
   let currentStreak = 0;
   for (let i = attempts.length - 1; i >= 0; i--) {
     if (attempts[i].correct) {
       currentStreak++;
-    } else {
-      break;
+      continue;
     }
+    if (i === absorbedIdx) continue; // freeze-protected
+    break;
   }
 
   return {

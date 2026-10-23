@@ -7,6 +7,10 @@
 > B0, B1, B2, B3 (+ the N1 fix), B4, B5 (difficulty part), B7, plus Phase 6 polish.
 > Remaining buildable: B5 session-length, B6, B8 (all roadmap-tier). Operational: hosted deploy + demo recording.
 > Source of truth for **progress** = **client localStorage**; **identity + leads** live in **Supabase** (see "Accounts & leads — shipped 22 Oct" below). The SPA still deploys statically; Supabase is reached with the anon key + RLS.
+>
+> **Status (23 Oct):** **Phase 8 — Challenge Engine v2** planned (see section below). Full build, staged v1/v2/v3. Expands today's single-verb MCQ into a 4-pillar engine (more formats, confidence × speed × Elo × streaks, Daily Drill + distribution + shareable grid, Pro-gated hard modes). Pulls Phase 7 progress sync forward. Decisions locked: additive `Challenge` type + Gemini offline backfill; Supabase tables now; Pro = Boss drills + Seasons/ranked ladder + Impostor + Red herring.
+>
+> **Status (23 Oct, later):** **Phase 8 v1 shipped locally** (commits `982b463` v1a + `e131a6b` v1b + `827e85d` v1c + v1d finishing touches; unpushed). All ten v1 bullets done; browser-verified end-to-end on `react-state-batching` (Spot-fix, Locate-then-fix, Rank-fixes); **50 tests pass** (`npm test`); typecheck clean (`npm run lint`). Every curated drill now plays all three v1 formats — `rankedFixes` placeholders authored via `npm run backfill -- --defaults --with-rankings` (quality upgrade: `--gemini`). Passive weekly streak freeze shipped (`src/lib/streak-freeze.ts`), consumed in `recordAttempt`, surfaced silently by `computeStats`. **v2 and v3 remain** — backend go-live (migrations `0004`–`0008`, SupabaseStore, Daily Drill, per-concept Elo, Blind-fix) then Pro + narrative (Diff-review, Impostor, Red-herring, prod-incident skin, Boss drills, Seasons, community drafts).
 
 ---
 
@@ -142,9 +146,473 @@ Pipeline: paste URL → fetch transcript + metadata → detect concept → gener
 
 ---
 
+## Phase 8 — Challenge Engine v2 ("make it addictive") — v1 SHIPPED LOCALLY; v2/v3 PLANNED
+
+> **Status (23 Oct):** planned, not yet in flight. Expands the current single-verb MCQ ("spot the flaw → pick the fix") into a 4-pillar engine: more interaction formats, a real progression loop (confidence × speed × per-concept Elo × streaks × combos), a social surface (Daily Drill with distribution reveal, Wordle-grid share card, user-authored community drills), and sharper framing on hard drills ("prod incident" skin, Boss drills). Pulls Phase 7 progress sync forward.
+>
+> **Status (23 Oct, later):** v1 complete on `main` in commits `982b463` / `e131a6b` / `827e85d` (unpushed). Browser-verified: Locate-then-fix on `react-state-batching` graded `Score: +235` (Base 100 × conf 2 × speed 1.07 × combo 1.1); Rank-fixes with canonical order graded `+322` and rendered 🟩🟩🟩🟩 share tiles + 42/18/22/18 Autopsy distribution. `npm test` → 35 pass. v2 and v3 remain.
+
+### Why
+Today's engine has **one axis** — correctness, 4 options, one verb. The content asset we already own (`Challenge`: one artifact + one planted flaw + fix options + explanation) generalizes to many more verbs and a richer feedback loop *without* re-authoring the library. User feedback: "the challenge engine is quite weak and one-dimensional in my opinion. Only 4–5 questions."
+
+### Decisions locked (23 Oct)
+- **Scope** = full build, staged v1 → v2 → v3. All 4 pillars planned in depth; nothing dropped.
+- **Content strategy** = extend `Challenge` additively with optional per-format fields; **Gemini offline backfill** fills those fields over the existing curated library. No reauthoring from zero. Deterministic-core principle (no LLM at request time) stays intact.
+- **Backend** = Supabase, now. New tables + RLS + RPCs for Daily Drill, Elo, Seasons, Boss drills, Streaks. Progress sync (Phase 7 `attempts` + `recall_items`) pulled forward in the same migration batch — Daily Drill + cross-device Elo would be lonely without it.
+- **Pro gating** = **Boss drills, Seasons/ranked ladder, Impostor rounds, Red herring** are Pro. Everything else (new formats, Daily Drill, Elo, streaks, confidence × speed, shareable grid, autopsy, user-authored drills) stays free.
+
+### Non-goals
+- Real-money ladders or tournaments.
+- Chat / DMs between users (comments on drills are moderated, flat).
+- Reactive LLM grading at request time.
+- Replacing the SRS schedule in `src/lib/recall.ts`. Elo and SRS co-exist: **SRS = "when to review"**, **Elo = "how strong you are on this concept"**. Confidence affects *score* only, not Elo or SRS, to keep the learning signal honest.
+
+---
+
+### Pillar 1 — Interaction variety (new verbs on the same drill)
+
+Current verb: pick 1 of 4 fixes. New verbs below. Each new format is an **optional capability** on an existing `Challenge`; a drill becomes playable in format X only when the required field is present.
+
+| Format                | Required new field(s) on `Challenge`                                   | Gating | Target version |
+|-----------------------|------------------------------------------------------------------------|--------|----------------|
+| Spot-fix (today)      | `buggyLines`, `fixOptions`, `correctOption`                            | Free   | shipped        |
+| **Locate-then-fix**   | `buggyLineAnswer: number` (canonical bug line; one of `buggyLines`)    | Free   | v1             |
+| **Rank-fixes**        | `rankedFixes: number[]` (indices of `fixOptions`, worst → best)        | Free   | v1             |
+| **Blind fix**         | `canonicalPatch: { oldLines: number[]; newText: string }`              | Free   | v2             |
+| **Diff review**       | `diffHunks: Hunk[]` + `reviewVerdict: 'approve'\|'request-changes'\|'comment'` | Free | v3     |
+| **Impostor**          | `impostorOption: string` (LLM-generated 5th option, subtly wrong)      | Pro    | v3             |
+| **Red herring**       | `secondFlaw: { line: number; label: string }`                          | Pro    | v3             |
+
+**Type extension** — `src/lib/types.ts`:
+```ts
+export type ChallengeFormat =
+  | 'spot-fix'
+  | 'locate-then-fix'
+  | 'rank-fixes'
+  | 'blind-fix'
+  | 'diff-review'
+  | 'impostor'
+  | 'red-herring';
+
+export interface Hunk {
+  file: string;
+  startLine: number;
+  oldLines: string[];
+  newLines: string[];
+}
+
+export interface Challenge {
+  // ...existing fields unchanged...
+
+  // v1 additions (optional — drill is only playable in a format when its field is present):
+  buggyLineAnswer?: number;        // locate-then-fix
+  rankedFixes?: number[];          // rank-fixes
+
+  // v2 additions:
+  canonicalPatch?: { oldLines: number[]; newText: string };
+
+  // v3 additions:
+  diffHunks?: Hunk[];
+  reviewVerdict?: 'approve' | 'request-changes' | 'comment';
+  impostorOption?: string;         // Pro
+  secondFlaw?: { line: number; label: string };  // Pro
+
+  // Derived at load time from field presence; also author-overridable:
+  availableFormats?: ChallengeFormat[];
+
+  // Seeded distribution (used by Autopsy until v2 real data lands):
+  seedDistribution?: number[];     // length = fixOptions.length, sums to 1
+}
+```
+
+**Attempt input** (new discriminated union, `src/lib/types.ts`):
+```ts
+export type AttemptInput =
+  | { format: 'spot-fix';         chosen: number }
+  | { format: 'locate-then-fix';  line: number; chosen: number }
+  | { format: 'rank-fixes';       order: number[] }
+  | { format: 'blind-fix';        patch: string }
+  | { format: 'diff-review';      verdict: 'approve' | 'request-changes' | 'comment'; chosen?: number }
+  | { format: 'impostor';         chosen: number }
+  | { format: 'red-herring';      chosenLine: number; chosen: number };
+```
+
+**Grading** — new pure module `src/lib/grading.ts`, called from `LocalStore.recordAttempt` and from the server-side `apply_attempt` RPC (via a tiny JS runtime in Supabase Edge, or re-implemented in SQL for simple formats):
+- `spot-fix`: `input.chosen === challenge.correctOption` (today).
+- `locate-then-fix`: both `input.line === challenge.buggyLineAnswer` AND `input.chosen === challenge.correctOption`. Partial credit (0.5) if the line is right but the fix is wrong — passes to SRS as "half success" (streak preserved, interval doesn't advance).
+- `rank-fixes`: Kendall-tau distance between `input.order` and `challenge.rankedFixes`; ≥ 0.8 counts as correct for SRS, score scales linearly.
+- `blind-fix`: normalize whitespace + trailing punctuation; Levenshtein ratio ≥ 0.9 against `challenge.canonicalPatch.newText` → correct.
+- `diff-review`: `input.verdict === challenge.reviewVerdict`; if the verdict is `request-changes`, also require `input.chosen === challenge.correctOption`.
+- `impostor`: planted bug is a decoy; the correct answer is the index of the fix whose text equals `challenge.impostorOption`.
+- `red-herring`: `challenge.secondFlaw.line` is a decoy; grade as locate-then-fix on `buggyLineAnswer`.
+
+All grading remains deterministic and client-runnable.
+
+**Component changes** (`src/screens/ChallengeScreen.tsx`):
+- Replace the current fixed MCQ pane with a **format router**. The right column renders one of:
+  - `src/components/formats/SpotFixPanel.tsx` (extracted from today's `ChallengeScreen` body)
+  - `src/components/formats/LocateThenFixPanel.tsx` *(v1)*
+  - `src/components/formats/RankFixesPanel.tsx` *(v1)*
+  - `src/components/formats/BlindFixPanel.tsx` *(v2)*
+  - `src/components/formats/DiffReviewPanel.tsx` *(v3)*
+  - `src/components/formats/ImpostorPanel.tsx` *(v3)*
+  - (red-herring reuses `LocateThenFixPanel` with a `distractorMode` prop)
+- A **format chooser** pill group above the right column, showing only formats whose required fields are present and (for Pro formats) only when the user is Pro — otherwise shown with a lock badge that opens the existing B7 Pro teaser. Keyboard `F` cycles.
+- `onSubmitAttempt` prop widens from `(chosen: number)` → `(input: AttemptInput)`.
+- `src/screens/RevealScreen.tsx` — reveal pane learns to render per-format feedback (correct line, correct order, correct patch diff, etc.), and gains the score + combo + Elo-delta chips and the Autopsy distribution bar.
+
+---
+
+### Pillar 2 — Progression loop (make every answer have a story)
+
+**Mechanics** (free except where noted):
+- **Confidence × speed scoring.** Before submit, user picks 🤔 Guess (×1) / 😎 Sure (×1.5) / 🔥 Certain (×2). Score formula:
+  `score = base × confidence × speedFactor × comboMultiplier`
+  where `speedFactor = clamp(1 + (medianTimeMs − timeMs) / medianTimeMs, 0.5, 2)` and `base = 100` for correct, `−40` for wrong. Wrong + 🔥 doubles the loss. Shown on reveal with a short breakdown.
+- **Streaks.** Already computed in `recall.ts` (`currentStreak`); surface it as a 🔥 flame + count in the `Navbar`. Add a soft **streak freeze** (one miss protected per calendar week, auto-applied so people don't speed-click).
+- **Combos.** Chain of correct answers within one session (library browse or Daily Drill run): `comboMultiplier = min(1 + 0.1 × combo, 2)`. Visible in `RevealScreen` as "Combo ×1.4 (4 in a row)".
+- **Per-concept Elo.** Each `concept` string gets its own rating.
+  - Start: 1200. K-factor: 32 for the user's first 10 games on that concept, then 16.
+  - Opponent rating = the drill's effective difficulty: `Beginner → 1100`, `Intermediate → 1400`, `Advanced → 1700` (overridable per-drill via a new optional `baseRating?: number` field).
+  - Outcome in {0, 0.5, 1} — 0.5 for the partial-credit cases above.
+  - Elo delta computed on every attempt. Confidence does **not** affect Elo.
+  - Visible on `RecallDashboardScreen` as a sortable mastery list; inline on each drill after submit ("Your rating: 1420 → 1428 ↑8"); inline bucket badge (Silver/Gold/Platinum/Diamond) earned at the thresholds below.
+- **Seasons** *(Pro — placement is Pro, badge is visible to all)*. 6-week ladders, Elo-based placement at season end: top 25% / 50% / 75% / rest → **Diamond / Platinum / Gold / Silver**. Public leaderboard page gated to Pro. Season rollover applies a soft reset: `newRating = 1200 + (oldRating − 1200) × 0.6`.
+- **Boss drills** *(Pro)*. Weekly. Server picks the user's 3 weakest concepts (lowest Elo, tie-broken by oldest overdue in SRS), bundles 5 drills across them in the hardest format each supports (prefer Impostor, else Locate-then-fix, else Spot-fix), no hints, 10-minute wall-clock. One attempt per week. "This week's boss" card on `LibraryScreen` with countdown.
+
+**Type additions** — `src/lib/types.ts`:
+```ts
+export type Confidence = 'guess' | 'sure' | 'certain';  // ×1 / ×1.5 / ×2
+
+export interface Attempt {
+  challengeId: string;
+  chosen: number;
+  correct: boolean;
+  at: number;
+  // v2 additions:
+  format: ChallengeFormat;
+  confidence: Confidence;
+  timeMs: number;
+  score: number;         // after all multipliers
+  comboAtTime: number;
+}
+
+export interface ConceptElo {
+  concept: string;
+  rating: number;        // starts 1200
+  games: number;
+  updatedAt: number;
+  seasonId?: string;
+}
+
+export type EloBucket = 'Diamond' | 'Platinum' | 'Gold' | 'Silver';
+
+export interface SeasonPlacement {
+  seasonId: string;
+  startRating: number;
+  endRating: number;
+  bucket: EloBucket;
+}
+```
+
+**Elo math** — new `src/lib/elo.ts`:
+```ts
+export function expectedScore(ra: number, rb: number): number {
+  return 1 / (1 + Math.pow(10, (rb - ra) / 400));
+}
+export function updateRating(ra: number, rb: number, outcome: 0 | 0.5 | 1, k: number): number {
+  return Math.round(ra + k * (outcome - expectedScore(ra, rb)));
+}
+export function kFactor(games: number): 32 | 16 {
+  return games < 10 ? 32 : 16;
+}
+```
+
+---
+
+### Pillar 3 — Social / viral
+
+- **Daily Drill.** One global drill per day, same for everyone, picked by a cron (or an owner-only admin UI) at least a week ahead. After submit, show the **distribution** of what others picked across the four fix options plus the global solve-rate ("61% picked B — you picked C — correct was A · 1,842 others played today"). One attempt per user per day.
+- **Shareable Wordle-grid card.** On reveal, generate a 3-row grid:
+  - Row 1 — today's drill: 4 tiles, one per fix option, filled left-to-right in rank order from the global distribution. 🟩 = the one the user picked AND it was correct; 🟢 = correct option (not picked by user); 🟨 = user's wrong pick that still had the right *line* (locate-then-fix / red-herring); 🟥 = all other wrong picks.
+  - Row 2 — streak: `🔥×N` glyphs for current streak.
+  - Row 3 — Elo delta: `↑+8  ⚛️React Hooks  1420→1428` (one row per concept touched this session, up to 3).
+  Shares as text + the existing `?dare=` deep link (reuses B4 plumbing, no new infra).
+- **Autopsy.** On reveal, show a horizontal distribution bar across the 4 fix options with counts and the top-voted comment on each distractor ("I nearly picked C because of…"). Comments are flat, moderated (community flag + Pro users = pre-filtered). Comment schema sketched in the backend section; shipping the comment write path is v3.
+- **User-authored drills** *(v3, free)*. Paste YouTube URL + planted-flaw concept → Gemini generates a draft `Challenge` (`buggyCode`, 4 fix options, `correctOption`, `explanation`) → user approves → row written to `community_drafts` → surfaces in a community queue → auto-published to the live library once it hits N upvotes (threshold scales with the submitter's Elo). Replaces the current disabled Pro teaser for pasted-URL in a free, slower, moderated path. B8 (full auto-gen for arbitrary videos) remains Pro.
+
+---
+
+### Pillar 4 — Framing / stakes
+
+Not new mechanics — a **visual skin** that lights up above a difficulty/Elo threshold. Deterministic. No logic change.
+
+- **"Prod incident" skin** on hard drills. The drill chrome swaps to a dark incident-report theme (`--incident-*` tokens in `src/theme/tokens.css`), the Concept Spotlight card is reframed as "**Postmortem** — this shipped. 03:14 UTC. Here's what the dashboard looked like." The hint drawer becomes "Rollback candidate".
+  - Applied when `difficulty === 'Advanced'` **OR** the user's rating on `challenge.concept` is ≥ 1500.
+  - Opt-out toggle in the profile menu for users who dislike the vibe.
+- **Boss drill framing** *(Pro)* — the entry card on `LibraryScreen` and the drill container itself inherit the same skin (see Pillar 2).
+
+---
+
+### Backend — Supabase schema (v2)
+
+New migrations, slotted after `0003_leads_sharer_ref.sql`:
+
+**`0004_progress_sync_and_pro.sql`** — pulls Phase 7 forward and adds the Pro flag.
+```sql
+-- Pro flag on existing public.users
+alter table public.users add column if not exists is_pro boolean not null default false;
+
+create table public.attempts (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null references auth.users(id) on delete cascade,
+  challenge_id  text not null,
+  format        text not null,
+  chosen        int,
+  correct       boolean not null,
+  confidence    text not null check (confidence in ('guess','sure','certain')),
+  time_ms       int not null,
+  score         numeric not null,
+  payload       jsonb,            -- format-specific extras (ranked order, patch text, …)
+  at            timestamptz not null default now()
+);
+create index on public.attempts (user_id, at desc);
+alter table public.attempts enable row level security;
+create policy "own attempts rw" on public.attempts
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table public.recall_items (
+  user_id          uuid not null references auth.users(id) on delete cascade,
+  challenge_id     text not null,
+  concept          text not null,
+  video_id         text not null,
+  interval_days    int not null,
+  next_review_at   timestamptz not null,
+  last_reviewed_at timestamptz not null,
+  streak           int not null default 0,
+  primary key (user_id, challenge_id)
+);
+alter table public.recall_items enable row level security;
+create policy "own recall rw" on public.recall_items
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+**`0005_elo.sql`**
+```sql
+create table public.concept_elo (
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  concept    text not null,
+  rating     int not null default 1200,
+  games      int not null default 0,
+  updated_at timestamptz not null default now(),
+  season_id  text,
+  primary key (user_id, concept)
+);
+alter table public.concept_elo enable row level security;
+create policy "own elo rw" on public.concept_elo
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+**`0006_daily_drill.sql`**
+```sql
+create table public.daily_drill (
+  for_date     date primary key,
+  challenge_id text not null,
+  created_at   timestamptz not null default now()
+);
+alter table public.daily_drill enable row level security;
+create policy "read daily" on public.daily_drill for select using (true);
+
+create table public.daily_pick (
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  for_date   date not null references public.daily_drill(for_date),
+  chosen     int not null,
+  confidence text not null,
+  time_ms    int not null,
+  correct    boolean not null,
+  at         timestamptz not null default now(),
+  primary key (user_id, for_date)
+);
+alter table public.daily_pick enable row level security;
+create policy "own pick insert" on public.daily_pick for insert with check (auth.uid() = user_id);
+create policy "read own picks"   on public.daily_pick for select using (auth.uid() = user_id);
+-- aggregate distribution is served via the submit_daily_pick RPC, not direct reads
+```
+
+**`0007_seasons.sql`**
+```sql
+create table public.seasons (
+  id         text primary key,
+  name       text not null,
+  starts_at  timestamptz not null,
+  ends_at    timestamptz not null
+);
+alter table public.seasons enable row level security;
+create policy "read seasons" on public.seasons for select using (true);
+
+create table public.season_placement (
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  season_id    text not null references public.seasons(id),
+  start_rating int not null,
+  end_rating   int not null,
+  bucket       text not null check (bucket in ('Diamond','Platinum','Gold','Silver')),
+  primary key (user_id, season_id)
+);
+alter table public.season_placement enable row level security;
+create policy "read placements"    on public.season_placement for select using (true);
+create policy "own placement rw"   on public.season_placement
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+**`0008_streaks_and_boss.sql`**
+```sql
+create table public.streaks (
+  user_id    uuid primary key references auth.users(id) on delete cascade,
+  current    int not null default 0,
+  best       int not null default 0,
+  freezes    int not null default 1,
+  last_day   date,
+  updated_at timestamptz not null default now()
+);
+alter table public.streaks enable row level security;
+create policy "own streaks rw" on public.streaks
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table public.boss_drills (
+  user_id       uuid not null references auth.users(id) on delete cascade,
+  week_start    date not null,
+  challenge_ids text[] not null,
+  completed_at  timestamptz,
+  score         numeric,
+  primary key (user_id, week_start)
+);
+alter table public.boss_drills enable row level security;
+create policy "own boss rw" on public.boss_drills
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+**`0009_community_drafts.sql`** *(v3)*
+```sql
+create table public.community_drafts (
+  id           uuid primary key default gen_random_uuid(),
+  author_id    uuid not null references auth.users(id) on delete cascade,
+  draft        jsonb not null,     -- a Challenge-shaped payload
+  upvotes      int not null default 0,
+  status       text not null default 'queued' check (status in ('queued','published','rejected')),
+  created_at   timestamptz not null default now(),
+  published_at timestamptz
+);
+alter table public.community_drafts enable row level security;
+create policy "read queue"   on public.community_drafts for select using (true);
+create policy "author write" on public.community_drafts
+  for insert with check (auth.uid() = author_id);
+```
+
+**RPCs** (`security definer`; validate `auth.uid()` inside each):
+- `submit_daily_pick(for_date date, chosen int, confidence text, time_ms int)` — inserts into `daily_pick` (unique per user+date; raises on retry) and returns `{ counts: int[], solved_rate: numeric, total_picks: int }` for the running distribution.
+- `get_daily_drill(for_date date)` → `{ challenge_id: text, user_pick: jsonb | null }`.
+- `apply_attempt(payload jsonb)` → writes to `attempts`, updates `recall_items` (SRS schedule), updates `concept_elo` (Elo delta), updates `streaks`. Returns `{ attempt_id, correct, score, new_rating, delta, next_review_at }`. **All grading in SQL where possible** (spot-fix, impostor, locate-then-fix) and in Supabase Edge for the fuzzy ones (blind-fix Levenshtein).
+- `merge_local_progress(payload jsonb)` — one-shot: migrates a signed-in user's existing local attempts + recall items into the server tables on first sync. Idempotent (dedup on `(user_id, challenge_id, at)`).
+- `generate_boss_drill(user_id uuid)` → selects 3 weakest concepts (lowest `concept_elo.rating`, tie-break on oldest `recall_items.next_review_at`), picks 5 drills, writes `boss_drills` row, returns it. Rejects callers whose `public.users.is_pro = false`.
+- `season_leaderboard(season_id text, limit int)` — top N users with their `end_rating` + `display_name`. Pro-only (checks `public.users.is_pro`).
+- `submit_community_draft(draft jsonb)` → inserts into `community_drafts` with `author_id = auth.uid()`; returns the row id.
+
+**Client store refactor** (`src/lib/store.ts`, new):
+```ts
+export interface Store {
+  getAttempts(): Promise<Attempt[]>;
+  getRecallItems(): Promise<RecallItem[]>;
+  getConceptElo(): Promise<ConceptElo[]>;
+  applyAttempt(input: AttemptInput, challenge: Challenge): Promise<ApplyAttemptResult>;
+  // …plus daily-drill, streaks, boss, seasons…
+}
+```
+Two adapters: `LocalStore` (today's class, kept for anonymous trial + offline) and `SupabaseStore` (wraps the RPCs). `api.ts` picks the adapter per call based on `isSupabaseConfigured() && currentUser`. Writes go through `SupabaseStore` and are mirrored into `LocalStore` as a read-through cache + offline queue (flushed on reconnect). Screens are unchanged.
+
+---
+
+### Content ops — Gemini backfill
+
+One-off Node script `scripts/backfill-challenge-fields.ts` (offline, uses `GEMINI_API_KEY` from `.env`, NOT at request time). Runs over every challenge in `src/content/data.ts`:
+
+| Pass | Fields written                                                                 | Blocking           |
+|------|---------------------------------------------------------------------------------|--------------------|
+| 1    | `buggyLineAnswer`, `rankedFixes`, `availableFormats`, `seedDistribution`        | v1                 |
+| 2    | `canonicalPatch`, `diffHunks`                                                   | v2 (blind-fix) / v3 (diff-review) |
+| 3    | `impostorOption`, `secondFlaw` (Pro only; **mandatory human review per drill**) | v3                 |
+
+Each pass writes back to `src/content/data.ts` via a code-mod (ts-morph). Validation: a Vitest suite round-trips every challenge through `grade()` for every format in its `availableFormats` and asserts the canonical answer grades correct.
+
+---
+
+### Staged rollout
+
+**v1 — "A second verb"** (pure client; demo-friendly; no new backend) — SHIPPED ✅
+- [x] Extend `Challenge` type with v1 fields; `AttemptInput` discriminated union; `src/lib/grading.ts`.
+- [x] Extract today's MCQ into `SpotFixPanel`; add `LocateThenFixPanel`, `RankFixesPanel`.
+- [x] Format chooser pill group on `ChallengeScreen` (keyboard `F` cycles).
+- [x] Confidence picker (🤔/😎/🔥) in the submission bar + score + breakdown shown on `RevealScreen`.
+- [x] Session combo counter + multiplier shown on reveal (combo chip appears from ≥ 2 in a row).
+- [x] Streak flame in `Navbar` — was already present (`src/components/Navbar.tsx:118`); passive weekly freeze implemented client-side in `src/lib/streak-freeze.ts` (one wrong per ISO-week absorbed, chronologically-first, silently — matches plan's "passive"). Server-side carry lands with v2's `streaks` table.
+- [x] `src/components/ShareGrid.tsx` — Wordle-grid share card on reveal; reuses B4's `navigator.share` + copy-link fallback. Elo-delta row deferred to v2.
+- [x] Autopsy section on reveal powered by `challenge.seedDistribution` (swapped for real in v2).
+- [x] Gemini backfill pass #1 over the curated library — ships as `scripts/backfill-challenge-fields.ts` with `--defaults` and `--gemini` modes. Runtime `src/content/normalize.ts` fills missing fields at load time; defaults mode has been run on all 9 unseeded drills.
+- [x] Vitest-style round-trip suite for grading — `src/lib/grading.test.ts` via `node:test` + `tsx` (chose this over installing vitest to avoid a new devDep). 50 tests passing: every curated drill × every advertised format, Kendall-tau, score formula, speedFactor clamp, confidence multiplier, locate-then-fix partial credit, weekly streak freeze (ISO-week math, absorption, cross-week reset), and "every drill plays all three formats".
+
+**Acceptance**: every curated drill plays in all three v1 formats ✅ (Spot-fix + Locate-then-fix on every drill via `normalize.ts` + backfill `--defaults`; Rank-fixes on every drill via backfill `--with-rankings` placeholder — `react-state-batching` was hand-authored, the rest are heuristic placeholders meant to be upgraded by `--gemini`); reveal shows score + combo + grid card ✅; share grid copies the correct glyph string ✅; `npm run lint` passes ✅; `npm test` → 50/50 ✅; the challenge screen holds 375 px wide ✅ (same pre-existing 5px body overflow as before this phase).
+
+**v2 — "Everyone's playing"** (backend go-live; progress sync; Daily Drill; Elo)
+- [ ] Migrations `0004`–`0008` applied in dev + prod Supabase.
+- [ ] `SupabaseStore` adapter + `api.ts` routing; `applyAttempt` RPC used on every submit.
+- [ ] First-sign-in flow: push any existing local `attempts` + `recall_items` into Supabase via `merge_local_progress` (addresses the Phase 7 open question).
+- [ ] Daily Drill card on `LibraryScreen` ("Today's bug · N others have played"); `submit_daily_pick` RPC; real distribution bar on reveal.
+- [ ] Per-concept Elo visible: mastery list on `RecallDashboardScreen`, inline "1420 → 1428 ↑8" badge on `RevealScreen`.
+- [ ] Shareable grid upgraded to use real distribution + Elo delta row.
+- [ ] Move `src/lib/reminders.ts` client slice onto a Supabase Edge Function (daily cron).
+- [ ] Add `BlindFixPanel` (free) + Levenshtein grader.
+- [ ] Gemini backfill pass #2 (canonical patch + diff hunks).
+
+**Acceptance**: Daily Drill writes to prod; two separate accounts in different browsers see each other's picks in the distribution within one day; concept Elo persists across devices; local-only trial still works for anonymous users.
+
+**v3 — "Depth and heat"** (Pro formats + narrative + community)
+- [ ] `DiffReviewPanel` (free).
+- [ ] `ImpostorPanel` + red-herring mode on `LocateThenFixPanel`, **Pro-gated** with lock badge + CTA into the B7 Pro teaser.
+- [ ] Prod-incident skin — `--incident-*` tokens in `src/theme/tokens.css`; auto-applied at `difficulty === 'Advanced' || userElo >= 1500`; profile toggle.
+- [ ] Boss drills (Pro) — "This week's boss" card on `LibraryScreen`; `generate_boss_drill` RPC; results feed Elo via `apply_attempt`.
+- [ ] Seasons (Pro) — season banner (countdown + current bucket + target bucket); public leaderboard page at `#/leaderboard`; end-of-season soft-reset job (Supabase Edge, cron).
+- [ ] User-authored drills (free queue) — migration `0009`; paste-URL in Library writes to `community_drafts`; `#/community` moderation queue; auto-publish ≥ N upvotes.
+- [ ] Gemini backfill pass #3 — fills `impostorOption` + `secondFlaw`; **every row human-reviewed before the Pro formats light up on it**.
+
+**Acceptance**: Pro gate works end-to-end (badge on gated items + Pro CTA opens the existing B7 teaser); Boss drill delivers 5 drills from the user's weakest concepts within one week-boundary; season leaderboard shows ≥ 2 bucketed users in staging; prod-incident skin fires on at least one real Advanced drill.
+
+---
+
+### Risks & mitigations
+- **Content divergence between formats** — single `Challenge` type with field-presence derivation; CI round-trips every drill through `grade()` for each declared format.
+- **Daily Drill answer leaks on Discord/Reddit** — expected and fine; the distribution reveal is social proof, not a secret. Rotate every 24 h; don't block, don't rate-limit.
+- **Elo cold-start variance** — K=32 for the first 10 concept-games, then 16. Opponent rating uses the drill's declared difficulty, not peer rating; that stabilizes early games.
+- **Over-gamification diluting the learning signal** — confidence affects *score* only (never Elo or SRS); streak freezes are soft so people don't speed-click to protect them; Boss drills still write to SRS.
+- **RLS surface area** — all writes go through RPCs (`apply_attempt`, `submit_daily_pick`, `merge_local_progress`, `submit_community_draft`); clients never `insert` into `attempts` / `recall_items` / `concept_elo` directly.
+- **Supabase cost at scale** — each submit = one RPC + bounded writes; distribution reveal reads an aggregate inside the RPC. If reads balloon, materialize `daily_pick_distribution` on an hourly cron.
+- **Impostor / red-herring content quality** — the Pro value prop; strictly human-reviewed. Pro formats stay dark on a drill until its impostor/decoy row is approved.
+
+### Dependencies / sequencing
+1. Phase 7 progress sync is a **soft prerequisite** for v2 — we're pulling it forward in `0004_progress_sync_and_pro.sql`.
+2. v1 lands fully behind the existing auth and store; no new tables, zero infra change beyond typecheck.
+3. The Pro flag (`public.users.is_pro`) is added in `0004` even though it's only lit up in v3, to avoid a late migration.
+4. v3 Pro formats cannot light up on a drill until Gemini backfill pass #3 has been human-reviewed for that drill.
+
+### Open questions (deferred — don't block v1)
+- **Pricing/payment** for Pro — Boss + Seasons + Impostor + Red herring are gated now; the actual Stripe-or-equivalent flow stays Roadmap. For buildathon demo, flip `is_pro` manually via SQL.
+- **Daily Drill selection**: cron vs. owner-only admin UI vs. community vote. v2 ships with a hand-picked week-ahead schedule; revisit at v3.
+- **Comments on drills** (Autopsy user comments beyond the seeded ones): schema and moderation path TBD in v3.
+- **Reactive LLM for user-authored draft generation** at paste-URL time — fine as *author-time* for the submitter; still off the request path for solvers.
+
+---
+
 ## Roadmap (post-buildathon)
 
-PR-review format → more judgment formats (predict-output, tradeoff, drag-drop flow) → auto-gen (B8) → more stacks/domains (B6) → ~~accounts + Supabase~~ (identity done) → real cross-device progress sync (Phase 7) → B2B team dashboards → mastery map + XP.
+PR-review format → more judgment formats (predict-output, tradeoff, drag-drop flow) → auto-gen (B8) → more stacks/domains (B6) → ~~accounts + Supabase~~ (identity done) → real cross-device progress sync (Phase 7, pulled forward by Phase 8 v2) → **Phase 8 v2/v3 (challenge-engine addictive mechanics)** → B2B team dashboards → mastery map + XP (now partially covered by per-concept Elo).
 
 ---
 

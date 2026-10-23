@@ -10,6 +10,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+// Minimal localStorage shim so modules that touch it under Node don't crash.
+// `src/lib/streak-freeze.ts` reaches into localStorage; the shim gives it an
+// in-memory store that mirrors the browser surface used by get/mark.
+if (typeof (globalThis as any).localStorage === 'undefined') {
+  const store = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
+    setItem: (k: string, v: string) => { store.set(k, String(v)); },
+    removeItem: (k: string) => { store.delete(k); },
+    clear: () => { store.clear(); },
+  };
+}
+
 import { CURATED_CHALLENGES } from '../content/data';
 import { normalizeChallenge } from '../content/normalize';
 import {
@@ -21,7 +34,9 @@ import {
   medianTimeMs,
   kendallTau,
 } from './grading';
-import { AttemptInput, ChallengeFormat } from './types';
+import { computeStats } from './recall';
+import { weekStartISO, getFreezeState, markFreezeUsed } from './streak-freeze';
+import { AttemptInput, Attempt, ChallengeFormat } from './types';
 
 /** Build the canonical "right answer" input for a given format. */
 function canonicalInput(challenge: ReturnType<typeof normalizeChallenge>, format: ChallengeFormat): AttemptInput | null {
@@ -150,4 +165,71 @@ test('confidenceMultiplier maps the three levels', () => {
   assert.equal(confidenceMultiplier('guess'), 1);
   assert.equal(confidenceMultiplier('sure'), 1.5);
   assert.equal(confidenceMultiplier('certain'), 2);
+});
+
+// --- rank-fixes authored on every drill (via backfill heuristic + hand seed) ---
+
+test('every curated drill plays all three v1 formats', () => {
+  for (const raw of CURATED_CHALLENGES) {
+    const c = normalizeChallenge(raw);
+    const formats = availableFormats(c);
+    for (const f of ['spot-fix', 'locate-then-fix', 'rank-fixes'] as const) {
+      assert.ok(formats.includes(f), `${c.id} should advertise ${f}, got ${formats.join(',')}`);
+    }
+    // Canonical rank-fixes answer grades correct.
+    const g = grade(c, { format: 'rank-fixes', order: c.rankedFixes! });
+    assert.equal(g.correct, true, `${c.id} rank-fixes canonical should grade correct`);
+  }
+});
+
+// --- weekStartISO + streak freeze ---
+
+test('weekStartISO: Monday is the week anchor; Sunday rolls back to prior Monday', () => {
+  // Thu 2026-10-22 → Mon 2026-10-19
+  assert.equal(weekStartISO(Date.UTC(2026, 9, 22, 15, 0, 0)), '2026-10-19');
+  // Sun 2026-10-18 → Mon 2026-10-12
+  assert.equal(weekStartISO(Date.UTC(2026, 9, 18, 23, 59, 0)), '2026-10-12');
+  // Mon 2026-10-19 00:00 → itself
+  assert.equal(weekStartISO(Date.UTC(2026, 9, 19, 0, 0, 0)), '2026-10-19');
+});
+
+test('streak freeze: computeStats skips one wrong attempt per week when freeze is used', () => {
+  localStorage.clear();
+  const monday = Date.UTC(2026, 9, 19, 10, 0, 0); // Mon 2026-10-19
+  const tue = monday + 24 * 3600 * 1000;
+  const wed = monday + 2 * 24 * 3600 * 1000;
+  // Three attempts this week: correct, wrong, correct. Without freeze: streak = 1.
+  const attempts: Attempt[] = [
+    { challengeId: 'x', chosen: 0, correct: true, at: monday },
+    { challengeId: 'x', chosen: 1, correct: false, at: tue },
+    { challengeId: 'x', chosen: 0, correct: true, at: wed },
+  ];
+  // No freeze used yet: freeze state is {used: false}, so computeStats breaks on the wrong one.
+  const beforeFreeze = computeStats([], attempts, 0);
+  assert.equal(beforeFreeze.currentStreak, 1, 'without freeze consumed, streak breaks on the wrong attempt');
+
+  // Mark freeze used; stats should now count across the wrong one.
+  markFreezeUsed(wed);
+  const afterFreeze = computeStats([], attempts, 0);
+  assert.equal(afterFreeze.currentStreak, 2, 'freeze absorbs the single wrong attempt');
+
+  // A SECOND wrong attempt the same week still breaks the streak (freeze is one-per-week).
+  const attempts2: Attempt[] = [
+    ...attempts,
+    { challengeId: 'x', chosen: 1, correct: false, at: wed + 3600 * 1000 },
+    { challengeId: 'x', chosen: 0, correct: true, at: wed + 2 * 3600 * 1000 },
+  ];
+  const twoWrong = computeStats([], attempts2, 0);
+  assert.equal(twoWrong.currentStreak, 1, 'second wrong attempt still breaks the streak');
+  localStorage.clear();
+});
+
+test('streak freeze: resets automatically on a new ISO-week', () => {
+  localStorage.clear();
+  const lastWeek = Date.UTC(2026, 9, 15, 10, 0, 0); // Thu last week
+  markFreezeUsed(lastWeek);
+  const thisWeek = Date.UTC(2026, 9, 22, 10, 0, 0); // Thu this week
+  const s = getFreezeState(thisWeek);
+  assert.equal(s.used, false, 'rollover week → freeze available again');
+  localStorage.clear();
 });

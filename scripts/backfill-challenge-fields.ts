@@ -37,14 +37,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_FILE = path.resolve(__dirname, '../src/content/data.ts');
 
-type Flags = { mode: 'defaults' | 'gemini'; dryRun: boolean; only?: string };
+type Flags = { mode: 'defaults' | 'gemini'; dryRun: boolean; only?: string; withRankings: boolean };
 
 function parseFlags(argv: string[]): Flags {
-  const flags: Flags = { mode: 'defaults', dryRun: false };
+  const flags: Flags = { mode: 'defaults', dryRun: false, withRankings: false };
   for (const a of argv) {
     if (a === '--defaults') flags.mode = 'defaults';
     else if (a === '--gemini') flags.mode = 'gemini';
     else if (a === '--dry-run') flags.dryRun = true;
+    else if (a === '--with-rankings') flags.withRankings = true;
     else if (a.startsWith('--only=')) flags.only = a.slice('--only='.length);
   }
   return flags;
@@ -97,6 +98,12 @@ function planDefaults(challenges: Challenge[], flags: Flags): Backfill[] {
       !Array.isArray(c.seedDistribution) || c.seedDistribution.length !== c.fixOptions.length;
     if (needsDist) {
       b.seedDistribution = defaultSeedDistribution(c.correctOption, c.fixOptions.length);
+      any = true;
+    }
+    // --with-rankings: emit a HEURISTIC placeholder so Rank-fixes lights up on
+    // every drill. Quality: not great — real rankings should come from --gemini.
+    if (flags.withRankings && !Array.isArray(c.rankedFixes)) {
+      b.rankedFixes = defaultRankedFixes(c);
       any = true;
     }
     if (any) out.push(b);

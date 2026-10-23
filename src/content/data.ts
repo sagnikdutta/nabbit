@@ -128,6 +128,7 @@ export const CURATED_CHALLENGES: Challenge[] = [
       inspectionClue: 'Look at line 8: the <li> element returned by items.map() lacks a key attribute to preserve DOM identity.',
     },
     buggyLines: [11],
+    rankedFixes: [3, 2, 1, 0], // backfill
     buggyLineAnswer: 11, // backfill
     seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `interface TodoItem {
@@ -190,6 +191,7 @@ function TodoList({ items }: { items: TodoItem[] }) {
       inspectionClue: 'Look at line 8: {unreadMessages.length && ...} evaluates to 0 when the array is empty, which leaks a visible "0" on screen.',
     },
     buggyLines: [8],
+    rankedFixes: [3, 2, 1, 0], // backfill
     buggyLineAnswer: 8, // backfill
     seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `interface InboxProps {
@@ -244,6 +246,7 @@ function MessageInbox({ unreadMessages }: InboxProps) {
       inspectionClue: 'Look at line 9: <button onClick={onDelete(userId)}> executes during component render instead of waiting for a click event.',
     },
     buggyLines: [6],
+    rankedFixes: [3, 2, 1, 0], // backfill
     buggyLineAnswer: 6, // backfill
     seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `interface UserCardProps {
@@ -304,6 +307,7 @@ function UserCard({ userId, onDelete }: UserCardProps) {
       inspectionClue: 'Look at lines 4-7: userIds.forEach(async ...) fires promises in the background and immediately moves to the following console.log.',
     },
     buggyLines: [5],
+    rankedFixes: [3, 2, 1, 0], // backfill
     buggyLineAnswer: 5, // Phase 8 v1 — enables Locate-then-fix on this drill
     seedDistribution: [0.45, 0.15, 0.25, 0.15], // Phase 8 v1b — Autopsy seed
     buggyCode: `async function syncDatabaseUsers(userIds: string[]) {
@@ -356,6 +360,7 @@ function UserCard({ userId, onDelete }: UserCardProps) {
       inspectionClue: 'Look at line 5: response.json() is called without inspecting response.ok or response.status.',
     },
     buggyLines: [4],
+    rankedFixes: [3, 2, 1, 0], // backfill
     buggyLineAnswer: 4, // backfill
     seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `async function loadDashboardMetrics() {
@@ -408,6 +413,7 @@ function UserCard({ userId, onDelete }: UserCardProps) {
       inspectionClue: 'Look at line 6: Promise.all will abort all reports if one optional report fails.',
     },
     buggyLines: [5],
+    rankedFixes: [3, 2, 1, 0], // backfill
     buggyLineAnswer: 5, // backfill
     seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `async function loadBatchReports(reportIds: string[]) {
@@ -455,6 +461,7 @@ function UserCard({ userId, onDelete }: UserCardProps) {
       inspectionClue: 'Look at line 7: setSeconds(seconds + 1) captures seconds as 0 forever. Use a functional updater instead.',
     },
     buggyLines: [7],
+    rankedFixes: [3, 2, 1, 0], // backfill
     buggyLineAnswer: 7, // Phase 8 v1 — enables Locate-then-fix on this drill
     seedDistribution: [0.38, 0.22, 0.20, 0.20], // Phase 8 v1b — Autopsy seed
     buggyCode: `function AutoSavingTimer() {
@@ -511,6 +518,7 @@ function UserCard({ userId, onDelete }: UserCardProps) {
       inspectionClue: 'Look at lines 6-8: window.addEventListener is called on mount, but the effect returns void instead of a cleanup function.',
     },
     buggyLines: [7],
+    rankedFixes: [3, 2, 1, 0], // backfill
     buggyLineAnswer: 7, // backfill
     seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `function WindowWidthTracker() {
@@ -563,6 +571,7 @@ function UserCard({ userId, onDelete }: UserCardProps) {
       inspectionClue: 'Look at lines 6-7: setHistory updates history, while [history] is present in the dependency array.',
     },
     buggyLines: [6],
+    rankedFixes: [3, 2, 1, 0], // backfill
     buggyLineAnswer: 6, // backfill
     seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `interface ProfileProps {
@@ -624,6 +633,7 @@ function ProfileSummary({ user }: ProfileProps) {
       inspectionClue: 'Look at line 7: Action is set to "s3:*" and Resource is "*", granting total administrative control across all S3 buckets.',
     },
     buggyLines: [7],
+    rankedFixes: [3, 2, 1, 0], // backfill
     buggyLineAnswer: 7, // backfill
     seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `{
@@ -677,6 +687,7 @@ function ProfileSummary({ user }: ProfileProps) {
       inspectionClue: 'Look at line 7 in the ingress block for port 22: cidr_blocks is set to ["0.0.0.0/0"].',
     },
     buggyLines: [7],
+    rankedFixes: [3, 2, 1, 0], // backfill
     buggyLineAnswer: 7, // backfill
     seedDistribution: [0.42, 0.22, 0.2, 0.16], // backfill
     buggyCode: `resource "aws_security_group" "bastion_ingress" {

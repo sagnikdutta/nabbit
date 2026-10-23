@@ -14,6 +14,7 @@ import { CURATED_VIDEOS, CURATED_CHALLENGES } from '../content/data';
 import { normalizeChallenges, normalizeChallenge } from '../content/normalize';
 import { calculateRecallSchedule, computeStats, getSimulatedNow } from './recall';
 import { grade, computeScore } from './grading';
+import { getFreezeState, markFreezeUsed } from './streak-freeze';
 import { extractYouTubeVideoId, generateFallbackPastedPack } from './youtube';
 import { supabase, isSupabaseConfigured, mapSupabaseUser } from './supabase';
 
@@ -324,11 +325,12 @@ class LocalStore {
         ? input.chosen
         : -1;
 
+    const now = getSimulatedNow(this.offsetDays);
     const attempt: Attempt = {
       challengeId,
       chosen,
       correct: g.correct,
-      at: getSimulatedNow(this.offsetDays),
+      at: now,
       format: input.format,
       confidence: meta.confidence,
       timeMs: meta.timeMs,
@@ -338,6 +340,19 @@ class LocalStore {
       input,
     };
     this.attempts.push(attempt);
+
+    // Phase 8 v1 — passive weekly streak freeze. If this wrong attempt would
+    // break a non-zero streak and the week's freeze is still intact, consume
+    // the freeze now; computeStats then skips this one wrong when counting.
+    // Partial credit (outcome 0.5) already preserves the streak via recall, so
+    // only outcome 0 (full wrong) is a candidate.
+    if (g.outcome === 0) {
+      const prevStreak = this.attempts.length >= 2 ? this.attempts[this.attempts.length - 2] : null;
+      if (prevStreak && prevStreak.correct) {
+        const freeze = getFreezeState(now);
+        if (!freeze.used) markFreezeUsed(now);
+      }
+    }
 
     const existingIndex = this.items.findIndex(i => i.challengeId === challengeId);
     const existing = existingIndex >= 0 ? this.items[existingIndex] : undefined;
