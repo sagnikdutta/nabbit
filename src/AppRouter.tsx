@@ -4,30 +4,36 @@ import { supabase } from './lib/supabase';
 
 /*
  * Path-based router that picks between V1 (the current app, hash-routed under
- * `/v1/…`) and V2 (the new dashboard mockup, served at exactly `/v2` or `/v2/`).
+ * `/v1/…`) and V2 (the new, in-progress UI).
  *
  * Routing table:
  *   /v2  or /v2/                → V2 dashboard
- *   /v2/<anything else>         → V1 (fallback, per product decision)
+ *   /v2/auth                    → V2 auth (sign-in / sign-up)
+ *   /v2/<anything else>         → V1 (fallback while that V2 page isn't built)
  *   /v1  or /v1/<anything>      → V1
  *   /  (and anything unmatched) → whichever version is marked default in
  *                                 public.ui_versions; falls back to V1 on
- *                                 lookup failure (V1 is the stable product;
- *                                 V2 is still being built out page by page).
- *                                 The server does this redirect in server.ts;
- *                                 this client-side path exists as a safety net
- *                                 for static hosts (Vercel).
+ *                                 lookup failure. The server does this
+ *                                 redirect in server.ts; the client-side path
+ *                                 is the safety net for static hosts (Vercel).
  *
- * V2 is lazy-loaded so its CSS + 240 KB of base64 thumbnails never ship to V1
- * users. V1 remains the default route and loads with no indirection.
+ * Each V2 page is lazy-loaded so its CSS + any heavy assets never ship to V1
+ * users or to other V2 pages. V1 remains the default route and loads with
+ * no indirection.
  */
 
 const V2Dashboard = lazy(() => import('./v2/Dashboard'));
+const V2Auth = lazy(() => import('./v2/pages/Auth'));
 
-type Choice = { kind: 'v1' } | { kind: 'v2' } | { kind: 'resolving' };
+type Choice =
+  | { kind: 'v1' }
+  | { kind: 'v2-dashboard' }
+  | { kind: 'v2-auth' }
+  | { kind: 'resolving' };
 
 function pickFromPath(pathname: string): Choice {
-  if (pathname === '/v2' || pathname === '/v2/') return { kind: 'v2' };
+  if (pathname === '/v2' || pathname === '/v2/') return { kind: 'v2-dashboard' };
+  if (pathname === '/v2/auth' || pathname === '/v2/auth/') return { kind: 'v2-auth' };
   if (pathname === '/v1' || pathname.startsWith('/v1/')) return { kind: 'v1' };
   if (pathname.startsWith('/v2/')) return { kind: 'v1' };
   return { kind: 'resolving' };
@@ -66,10 +72,18 @@ export default function AppRouter() {
     return () => { alive = false; };
   }, [choice.kind]);
 
-  if (choice.kind === 'v2') {
+  if (choice.kind === 'v2-dashboard') {
     return (
       <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading V2…</div>}>
         <V2Dashboard />
+      </Suspense>
+    );
+  }
+
+  if (choice.kind === 'v2-auth') {
+    return (
+      <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading V2 auth…</div>}>
+        <V2Auth initialMode={new URLSearchParams(window.location.search).get('mode') === 'signup' ? 'signup' : 'signin'} />
       </Suspense>
     );
   }

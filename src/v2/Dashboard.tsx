@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { api } from '../lib/api';
+import { UserAccount } from '../lib/types';
+import './theme/tokens.css';
 import './dashboard.css';
 import {
   continueReactCourse,
@@ -113,6 +116,8 @@ const RECOMMENDED = [
 export default function V2Dashboard() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [activeNav, setActiveNav] = useState<NavKey>('Home');
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => api.getCurrentUser());
+  useEffect(() => api.onAuthChange(setCurrentUser), []);
   const [activeTab, setActiveTab] = useState<Tab>('Recent');
   const [search, setSearch] = useState('');
   const [continueDrillsDone, setContinueDrillsDone] = useState(6);
@@ -269,14 +274,32 @@ export default function V2Dashboard() {
             >
               {theme === 'dark' ? '☀' : '☾'}
             </button>
-            <div className="v2-avatar">U</div>
-            <button
-              className="v2-icon-btn"
-              aria-label="Profile"
-              onClick={() => showToast('Signed in as user1.')}
-            >
-              ⌄
-            </button>
+            {currentUser ? (
+              <>
+                <div className="v2-avatar" title={currentUser.email}>
+                  {(currentUser.email?.[0] || 'U').toUpperCase()}
+                </div>
+                <button
+                  className="v2-icon-btn"
+                  aria-label="Sign out"
+                  title="Sign out"
+                  onClick={() => {
+                    api.signOut();
+                    showToast('Signed out.');
+                  }}
+                >
+                  ⌄
+                </button>
+              </>
+            ) : (
+              <button
+                className="v2-primary"
+                style={{ padding: '8px 16px' }}
+                onClick={() => (window.location.href = '/v2/auth')}
+              >
+                Sign in
+              </button>
+            )}
           </header>
 
           <main className="v2-workspace">

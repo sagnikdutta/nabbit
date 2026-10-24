@@ -1,60 +1,10 @@
 /*
- * V2 Dashboard styles — ported verbatim from docs/nabbit_interactive_dashboard.html.
- * Scoped under `.v2-root` so the V2 CSS variables and resets never leak into V1.
- * V1 uses --color-* tokens from src/theme/tokens.css; V2 uses its own --bg/--panel/--ink
- * token set below so the two can co-exist in the same Vite build.
+ * V2 Dashboard page styles. Ported from docs/nabbit_interactive_dashboard.html.
+ * CSS variables, reset, and `.v2-root` base styles live in theme/tokens.css —
+ * this file only holds the dashboard-specific layout.
  */
 
-.v2-root {
-  color-scheme: light;
-  --bg: #f7f8fc;
-  --panel: #fff;
-  --panel-2: #f5f6fc;
-  --ink: #101638;
-  --muted: #667293;
-  --line: #e2e7f4;
-  --soft: #f0f2fb;
-  --purple: #6847ff;
-  --purple2: #8467ff;
-  --purple-soft: #eee9ff;
-  --shadow: 0 8px 24px rgba(27, 36, 78, 0.04);
-  --green: #06b98c;
-  --red: #ff343d;
-  --amber: #ffad23;
-  --sidebar: #fff;
-  --hero: #f1f2ff;
-
-  min-height: 100vh;
-  background: var(--bg);
-  color: var(--ink);
-  font: 14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  transition: background 0.2s, color 0.2s;
-}
-
-.v2-root[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: #080f1b;
-  --panel: #0d1726;
-  --panel-2: #111d2e;
-  --ink: #f4f6ff;
-  --muted: #a0afca;
-  --line: #21314a;
-  --soft: #172337;
-  --purple: #8060ff;
-  --purple2: #947aff;
-  --purple-soft: #241d4a;
-  --shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
-  --sidebar: #091321;
-  --hero: #10162b;
-}
-
-.v2-root *,
-.v2-root *::before,
-.v2-root *::after { box-sizing: border-box; }
-.v2-root button, .v2-root input { font: inherit; }
-.v2-root button { cursor: pointer; }
-.v2-root a { color: inherit; text-decoration: none; }
-
+.v2-root { min-height: 100vh; }
 .v2-app { min-height: 100vh; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
 
 .v2-sidebar {
