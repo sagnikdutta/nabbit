@@ -1,8 +1,10 @@
-import express, { Request, Response } from 'express';
+import 'dotenv/config';
+import express, { NextFunction, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
+import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI, Type } from '@google/genai';
 import { CURATED_CHALLENGES, CURATED_VIDEOS } from './src/content/data.ts';
 import { extractYouTubeVideoId, generateFallbackPastedPack } from './src/lib/youtube.ts';
@@ -68,6 +70,79 @@ function injectDareOg(html: string, dareId: string): string {
   return out;
 }
 
+/**
+ * V1/V2 dashboard selector. The bare base URL redirects to /v1/ or /v2/ based
+ * on which row in public.ui_versions has `default = true`. Any lookup failure
+ * (missing env vars, missing table, no default row) falls back to /v1/ — V1
+ * is the stable, feature-complete app; V2 is still being filled in page by page.
+ *
+ * The lookup result is cached in-process for 30 s so we don't hit Supabase on
+ * every page view, but the cache is short enough that flipping the default
+ * row in Supabase takes effect within half a minute without a server restart.
+ */
+const VERSION_CACHE_TTL_MS = 30_000;
+let versionCache: { value: 'v1' | 'v2'; at: number } | null = null;
+
+const supabaseEnvUrl =
+  process.env.SUPABASE_URL ||
+  process.env.VITE_SUPABASE_URL ||
+  '';
+const supabaseEnvKey =
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  '';
+const serverSupabase =
+  supabaseEnvUrl && supabaseEnvKey
+    ? createClient(supabaseEnvUrl, supabaseEnvKey, { auth: { persistSession: false } })
+    : null;
+
+console.log(
+  '[Nabbit] ui_versions resolver:',
+  serverSupabase
+    ? `supabase client ready (url=${supabaseEnvUrl.replace(/^https?:\/\//, '').slice(0, 24)}…)`
+    : 'no supabase env vars — base URL will fall back to /v2/'
+);
+
+async function resolveDefaultVersion(): Promise<'v1' | 'v2'> {
+  const now = Date.now();
+  if (versionCache && now - versionCache.at < VERSION_CACHE_TTL_MS) {
+    return versionCache.value;
+  }
+  let value: 'v1' | 'v2' = 'v1';
+  if (serverSupabase) {
+    try {
+      const { data, error } = await serverSupabase
+        .from('ui_versions')
+        .select('version, "default"')
+        .eq('default', true)
+        .limit(1)
+        .maybeSingle();
+      if (error) {
+        console.warn('[Nabbit] ui_versions lookup error:', error.message);
+      } else if (!data) {
+        console.warn('[Nabbit] ui_versions: no row has default=true');
+      } else if (typeof data.version === 'string') {
+        value = data.version === 'v2' ? 'v2' : 'v1';
+      }
+    } catch (err) {
+      console.warn('[Nabbit] ui_versions lookup threw:', (err as Error).message);
+    }
+  }
+  versionCache = { value, at: now };
+  return value;
+}
+
+async function redirectBaseUrl(req: Request, res: Response, next: NextFunction) {
+  // Only redirect the exact root path. Everything else (/v1/*, /v2/*, assets,
+  // API routes) continues down the middleware chain untouched.
+  if (req.path !== '/') return next();
+  // Vite dev's own asset probes are already filtered out by req.path; nothing
+  // else here can mistake an asset for a page navigation.
+  const version = await resolveDefaultVersion();
+  const search = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  res.redirect(302, `/${version}/${search}`);
+}
+
 async function startServer() {
   const app = express();
   app.use(express.json());
@@ -76,6 +151,9 @@ async function startServer() {
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ ok: true, timestamp: Date.now(), service: 'nabbit' });
   });
+
+  // Base-URL version selector (runs before any catch-all).
+  app.get('/', redirectBaseUrl);
 
   // --- Nabbit Authentication Store & Endpoints ---
   interface ServerUser {

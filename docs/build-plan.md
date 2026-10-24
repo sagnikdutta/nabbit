@@ -19,6 +19,8 @@
 > **Status (24 Oct, hotfix):** Migrations 0009 **and** 0010 applied in the live Supabase project. Migration `0010_fix_upvote_ambiguity.sql` recreates `upvote_community_draft` with return columns renamed `upvotes_out` / `status_out` to dodge a PL/pgSQL variable/column clash on `status` found when applying 0009. Verified against the live DB: `apply_attempt` with `isBoss: true` + `format: 'impostor'` stamped `attempts.is_boss = true` + `attempts.impostor_graded = true`, scored +165, Elo delta +12 (1200 → 1212); `submit_community_draft` returned a draft id end-to-end. Upvote end-to-end re-verification deferred (my browser script got cut by a page navigation — the client already tolerates both pre- and post-0010 return shapes).
 >
 > **Status (24 Oct, UI debt):** The signed-in dashboard order on `LibraryScreen` is wrong after Phase 8 v2/v3. Boss drill card, Season leaderboard tile and Community drafts tile sit *above* "Welcome back, user" and read as an afterthought — tall, text-only rows. "Import from YouTube" shrank to a sub-button in the same area and is almost invisible. A dashboard **UI redesign** is the next thing to do before any more feature work — logged as **B9** below.
+>
+> **Status (24 Oct, V2 scaffold):** A full visual overhaul from a new mockup is in flight; subsumes B9. V2 scaffold shipped locally (not yet pushed): `src/v2/Dashboard.tsx` + `src/v2/dashboard.css` + `src/v2/thumbnails.ts` (one-page React port of the attached mockup, own CSS-variable token set, light + dark), `src/AppRouter.tsx` (path routing: `/v2` → V2, `/v1/*` and `/v2/<anything>` → V1), `server.ts` middleware doing a cached Supabase lookup for the `/` redirect, migration `0011_ui_versions.sql` (`version` + `default`, RLS off, seeded with `v1=true, v2=false`). Live Supabase currently has `default=true` on `v2` for preview; fallbacks on both the server and client flipped to V1 so a lookup failure never traps a user in a half-built V2. Plan to migrate every page logged as **B10** below.
 
 ---
 
@@ -151,6 +153,67 @@ Phase 8 landed a lot of new dashboard surfaces (Daily Drill card, Boss drill car
 - Design tokens: no new tokens required. Reuse `--color-accent-weak`, `--color-border`, `--shadow-sm`.
 
 **Acceptance:** screenshot a signed-in dashboard at 1280px and 375px; verify Pro row renders Boss + Season banner + Leaderboard as one visual group; Community row renders Drafts + YouTube importer at equal weight; Importer is clearly discoverable; Welcome back is the top heading; nothing visually orphaned. No new tests. No backend changes.
+
+### B10 — V2-everywhere migration  *(design overhaul; subsumes B9)* — PLANNED
+
+**Status (24 Oct):** V2 scaffold shipped locally — path-based router, V2 Dashboard home port, Supabase `ui_versions` table, server-side `/` redirect. Reaching the end state means every V1 page has a V2 counterpart and the `ui_versions.default` row flips to `v2`.
+
+**Where things stand today:**
+- `src/v2/Dashboard.tsx` + `src/v2/dashboard.css` + `src/v2/thumbnails.ts` — one-page port of the attached mockup (hero · Continue · Library grid · Recommended · right rail with ring/goals/recall/achievements). Hard-coded demo data.
+- `src/AppRouter.tsx` — path routing: `/v2` → V2 Dashboard, `/v1/*` and `/v2/<anything>` → V1, `/` → server-side Supabase lookup falling back to V1.
+- `server.ts` — Express middleware reads `public.ui_versions` (30 s in-process cache) and 302-redirects `/` to the default version; falls back to V1 on any failure.
+- `supabase/migrations/0011_ui_versions.sql` — `ui_versions(version pk, "default" bool)`, RLS off, seeded with `v1=true, v2=false`. Currently `default=true` is on `v2` in the live project (manual flip for preview).
+
+**Why "V2-everywhere" and not "V2 for the dashboard only":** every other `/v2/*` path falling back to V1 is unsustainable — V2 becomes a demo nobody can actually use for real work, and the version switch is cosmetic. The sustainable end state is V2 = the product, V1 = an archive link kept until we're sure.
+
+**Guiding principles:**
+1. **V1 stays shippable throughout.** Every PR leaves V1 fully working. V2 grows beside it until it reaches parity, then flips the `ui_versions` default.
+2. **One design system under `src/v2/`.** Formalize what we already have into reusable primitives — no page-by-page CSS copy-paste.
+3. **Shared data layer, no duplication.** Both versions keep calling `api.ts`, `supabase-store.ts`, `types.ts`, `content/data.ts`. V2 owns presentation only.
+4. **Visible version switcher.** Add a one-line "Preview new UI →" / "Classic view →" link in each version's sidebar footer so testers can jump between them without URL-typing.
+
+**Phase V2-A — Design system foundation** (1 PR, ~1 day)
+Move V2 from "one-page prototype" to "reusable kit".
+- Extract `.v2-root` CSS variables from `src/v2/dashboard.css` into `src/v2/theme/tokens.css` (parallel to `src/theme/tokens.css`). Dark-mode variants in `tokens-dark.css`.
+- Build `src/v2/components/`:
+  - `V2Shell.tsx` — sidebar + topbar + right-rail layout wrapper. `children` for the main content, `rightRail` as a slot.
+  - `V2Sidebar.tsx` — nav items driven by a `NavItem[]` prop; wires to the shared V2 router.
+  - `V2Topbar.tsx` — search, streak/XP/level pills (fed real data via the existing stats), theme toggle, avatar menu.
+  - `V2Card.tsx`, `V2Panel.tsx`, `V2Button.tsx` (primary/secondary/ghost), `V2Chip.tsx`, `V2Progress.tsx`, `V2Toast.tsx`, `V2Modal.tsx`.
+- Add a lightweight V2 router at `src/v2/v2router.tsx` (hash-based: `#/library`, `#/challenge/:id`, …) so V2 can navigate between pages without reloading the whole app.
+- Refactor `src/v2/Dashboard.tsx` to consume the new primitives — proof the kit holds.
+- `/v2/<anything>` fallback stays V1 while pages are missing.
+
+**Phase V2-B — Pages, in priority order** (one per PR)
+Each page lives at `src/v2/pages/<name>.tsx`, reuses `V2Shell`, binds to the shared data layer, and is ported to a V2-styled surface:
+
+| # | V1 screen | V2 page | Shipping value |
+|---|---|---|---|
+| 1 | `LibraryScreen.tsx` — signed-in dashboard | `v2/pages/Dashboard.tsx` (promote the current Dashboard.tsx, wire to real data) | B9 ships properly: Welcome back · Daily Drill · Boss row · Community strip · Library grid |
+| 2 | `ChallengeScreen.tsx` | `v2/pages/Challenge.tsx` | The drill screen is where users spend 80 % of their time |
+| 3 | `RecallDashboardScreen.tsx` | `v2/pages/Recall.tsx` | Reuses the right-rail panel look from the Dashboard |
+| 4 | `AuthScreen.tsx` | `v2/pages/Auth.tsx` | First impression for new signups |
+| 5 | `LeaderboardScreen.tsx` | `v2/pages/Leaderboard.tsx` | Pro surface; low traffic, easy port |
+| 6 | `CommunityScreen.tsx` | `v2/pages/Community.tsx` | Last page before flip |
+
+After each PR, `/v2/<name>` renders V2; `/v2/*` still falls through to V1 for anything unimplemented.
+
+**Phase V2-C — The flip**
+- All six pages at parity in V2.
+- Run both defaults side-by-side on staging for a week; collect feedback via the sidebar switcher.
+- Flip: `update public.ui_versions set "default" = (version = 'v2');` — server picks it up within 30 s.
+- Pick a sunset date for V1 (say two weeks later).
+- Delete the V1 code paths and the V1 branch in `AppRouter`; collapse to "always V2". Keep `ui_versions` as a kill-switch in case of regressions.
+
+**Risks + mitigations:**
+- **Shared data layer breaks V1 while V2 is being built.** Mitigate by *never* changing `api.ts` / `supabase-store.ts` function signatures in a V2 PR — add new helpers, don't rewrite existing ones.
+- **Design drift between V2 pages.** The Phase V2-A primitives are the enforcement mechanism. A Vitest spec or ESLint rule scans V2 JSX for raw hex colors and rejects anything outside the token file.
+- **Dual-maintenance burden.** Keep V2-B PRs small (one page each). A page that lingers half-ported is worse than a V1 page.
+- **Mobile.** V2's prototype already carries the 1200 / 900 / 600 breakpoints — honor them in the primitives from day one, don't retrofit.
+
+**Acceptance (per page):** screenshot V2 page at 1440px and 375px light + dark; keyboard-navigate it; verify it reads from the same shared data as V1 (switch between `/v1/#/<page>` and `/v2/#/<page>` and the numbers match).
+
+**Supersedes:** B9. The dashboard recomposition described there is implemented as part of V2-B item 1 instead of as a V1 patch.
 
 ---
 
