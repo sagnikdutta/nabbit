@@ -1,28 +1,54 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, X, Lightbulb } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  X,
+  Lightbulb,
+  MousePointerClick,
+  Crosshair,
+  ListOrdered,
+  Pencil,
+  GitPullRequest,
+  Ghost,
+  Lock,
+  ChevronUp,
+  ChevronDown,
+  MessageSquare,
+} from 'lucide-react';
 import { api } from '../../lib/api';
-import { Challenge, Video, AttemptInput, Confidence } from '../../lib/types';
+import { Challenge, Video, AttemptInput, Confidence, ChallengeFormat, PRO_FORMATS } from '../../lib/types';
 import { availableFormats, grade } from '../../lib/grading';
+import { supabase } from '../../lib/supabase';
 import { V2Shell } from '../V2Shell';
 import { useV2Theme } from '../useTheme';
 import './challenge.css';
 
 /*
- * V2 Challenge page — "Bug Hunt Drill". Reads the challenge id from the
- * URL path (/v2/challenge/<id>), loads the challenge + video via the
- * shared api layer, and plays the Spot-fix (pick 1 of 4 fixes) format
- * end-to-end with an in-place reveal.
+ * V2 Challenge page — Bug Hunt Drill.
+ * Reads the drill id from /v2/challenge/<id>, loads challenge + video via
+ * the shared api layer, and plays all seven Phase 8 formats:
+ *   spot-fix, locate-then-fix, rank-fixes, blind-fix, diff-review,
+ *   impostor (Pro), red-herring (Pro).
  *
- * Other formats on the same drill are intentionally scoped out of this
- * first pass — a notice in the right rail links to the classic view when
- * they're declared on the challenge. Full format router port is tracked
- * as follow-up work under B10 V2-B/2.
- *
- * The grading, SRS and Elo logic all live in api.submitAttempt / grading.ts,
- * so correctness, score, combo and Elo delta behave identically to V1.
+ * Grading, SRS and Elo pipeline live in api.submitAttempt / grading.ts
+ * — identical to V1. Trial (signed-out) users grade locally.
  */
 
 const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E'];
+
+const FORMAT_META: Record<
+  ChallengeFormat,
+  { label: string; icon: typeof MousePointerClick; hint: string }
+> = {
+  'spot-fix':        { label: 'Spot-fix',     icon: MousePointerClick, hint: 'Pick the correct fix.' },
+  'locate-then-fix': { label: 'Locate + fix', icon: Crosshair,         hint: 'Pick the buggy line, then the fix.' },
+  'rank-fixes':      { label: 'Rank fixes',   icon: ListOrdered,       hint: 'Order fixes worst → best.' },
+  'blind-fix':       { label: 'Blind fix',    icon: Pencil,            hint: 'Write the patch yourself.' },
+  'diff-review':     { label: 'Diff review',  icon: GitPullRequest,    hint: 'Approve, request changes, or comment.' },
+  'impostor':        { label: 'Impostor',     icon: Ghost,             hint: 'Pro — one of the fixes is a decoy.' },
+  'red-herring':     { label: 'Red herring',  icon: Crosshair,         hint: 'Pro — locate the real bug through a decoy.' },
+};
 
 function readChallengeIdFromPath(): string | null {
   const m = window.location.pathname.match(/^\/v2\/challenge\/([^/?#]+)/);
@@ -30,7 +56,7 @@ function readChallengeIdFromPath(): string | null {
 }
 
 type Phase = 'answering' | 'revealed';
-
+type Verdict = 'approve' | 'request-changes' | 'comment';
 type RevealState = {
   isCorrect: boolean;
   explanation: string;
@@ -47,8 +73,15 @@ export default function V2ChallengePage() {
   const [allInVideo, setAllInVideo] = useState<Challenge[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [isPro, setIsPro] = useState(false);
 
+  const [format, setFormat] = useState<ChallengeFormat>('spot-fix');
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [selectedLine, setSelectedLine] = useState<number | null>(null);
+  const [rankOrder, setRankOrder] = useState<number[]>([]);
+  const [patch, setPatch] = useState<string>('');
+  const [verdict, setVerdict] = useState<Verdict | null>(null);
+
   const [confidence, setConfidence] = useState<Confidence>('sure');
   const [phase, setPhase] = useState<Phase>('answering');
   const [reveal, setReveal] = useState<RevealState | null>(null);
@@ -67,15 +100,28 @@ export default function V2ChallengePage() {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
   }, []);
 
-  // Load challenge + its video + the other challenges in the same video.
+  // Fetch public.users.is_pro once per session so Impostor/Red-herring
+  // unlock for Pro users. Same lookup V1 App.tsx uses.
+  useEffect(() => {
+    const user = api.getCurrentUser();
+    if (!user || user.provider !== 'supabase' || !supabase) {
+      setIsPro(false);
+      return;
+    }
+    let alive = true;
+    supabase.from('users').select('is_pro').eq('id', user.id).maybeSingle()
+      .then(
+        ({ data }) => { if (alive) setIsPro(Boolean((data as any)?.is_pro)); },
+        () => { if (alive) setIsPro(false); },
+      );
+    return () => { alive = false; };
+  }, []);
+
+  // Load challenge + video + sibling challenges.
   useEffect(() => {
     let alive = true;
     const id = readChallengeIdFromPath();
-    if (!id) {
-      setLoading(false);
-      setNotFound(true);
-      return;
-    }
+    if (!id) { setLoading(false); setNotFound(true); return; }
     (async () => {
       try {
         const videos = await api.getVideos();
@@ -92,24 +138,32 @@ export default function V2ChallengePage() {
             return;
           }
         }
-        if (alive) {
-          setNotFound(true);
-          setLoading(false);
-        }
+        if (alive) { setNotFound(true); setLoading(false); }
       } catch {
-        if (alive) {
-          setNotFound(true);
-          setLoading(false);
-        }
+        if (alive) { setNotFound(true); setLoading(false); }
       }
     })();
     return () => { alive = false; };
   }, []);
 
-  // Reset drill state whenever the challenge changes (e.g. "Next drill").
+  const supportedFormats = useMemo(
+    () => (challenge ? availableFormats(challenge) : ['spot-fix' as ChallengeFormat]),
+    [challenge],
+  );
+  const identityOrder = useMemo(
+    () => (challenge ? challenge.fixOptions.map((_, i) => i) : []),
+    [challenge?.id],
+  );
+
+  // Reset drill-level state whenever the challenge changes (e.g. Next drill).
   useEffect(() => {
     if (!challenge) return;
+    setFormat(supportedFormats[0]);
     setSelectedOption(null);
+    setSelectedLine(null);
+    setRankOrder(identityOrder);
+    setPatch('');
+    setVerdict(null);
     setConfidence('sure');
     setPhase('answering');
     setReveal(null);
@@ -118,17 +172,71 @@ export default function V2ChallengePage() {
     startedAt.current = Date.now();
   }, [challenge?.id]);
 
-  const supportedFormats = useMemo(
-    () => (challenge ? availableFormats(challenge) : []),
-    [challenge],
-  );
-  const hasAdvancedFormats = supportedFormats.some(f => f !== 'spot-fix');
+  // Reset answer state when the user switches format mid-drill.
+  useEffect(() => {
+    setSelectedOption(null);
+    setSelectedLine(null);
+    setRankOrder(identityOrder);
+    setPatch('');
+    setVerdict(null);
+    startedAt.current = Date.now();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [format]);
+
+  const locateMode = format === 'locate-then-fix' || format === 'red-herring';
+  const impostorOptionCount =
+    challenge && format === 'impostor'
+      ? challenge.fixOptions.length + (challenge.impostorOption ? 1 : 0)
+      : challenge?.fixOptions.length ?? 0;
+
+  const canSubmit = (() => {
+    if (!challenge) return false;
+    switch (format) {
+      case 'locate-then-fix':
+      case 'red-herring':
+        return selectedLine !== null && selectedOption !== null;
+      case 'rank-fixes':
+        return rankOrder.length === challenge.fixOptions.length;
+      case 'blind-fix':
+        return patch.trim().length > 0;
+      case 'diff-review':
+        if (verdict === null) return false;
+        if (verdict === 'request-changes') return selectedOption !== null;
+        return true;
+      default:
+        return selectedOption !== null;
+    }
+  })();
 
   const handleSubmit = async () => {
-    if (!challenge || selectedOption === null || isSubmitting) return;
+    if (!challenge || !canSubmit || isSubmitting) return;
     setIsSubmitting(true);
     const timeMs = Math.max(0, Date.now() - startedAt.current);
-    const input: AttemptInput = { format: 'spot-fix', chosen: selectedOption };
+    let input: AttemptInput;
+    switch (format) {
+      case 'locate-then-fix':
+        input = { format: 'locate-then-fix', line: selectedLine as number, chosen: selectedOption as number };
+        break;
+      case 'red-herring':
+        input = { format: 'red-herring', chosenLine: selectedLine as number, chosen: selectedOption as number };
+        break;
+      case 'rank-fixes':
+        input = { format: 'rank-fixes', order: rankOrder };
+        break;
+      case 'blind-fix':
+        input = { format: 'blind-fix', patch };
+        break;
+      case 'diff-review':
+        input = verdict === 'request-changes'
+          ? { format: 'diff-review', verdict, chosen: selectedOption as number }
+          : { format: 'diff-review', verdict: verdict as 'approve' | 'comment' };
+        break;
+      case 'impostor':
+        input = { format: 'impostor', chosen: selectedOption as number };
+        break;
+      default:
+        input = { format: 'spot-fix', chosen: selectedOption as number };
+    }
     try {
       const currentUser = api.getCurrentUser();
       if (currentUser) {
@@ -142,7 +250,6 @@ export default function V2ChallengePage() {
           eloDelta: res.eloDelta,
         });
       } else {
-        // Signed-out trial: grade locally without touching SRS/Elo.
         const g = grade(challenge, input);
         setReveal({
           isCorrect: g.correct,
@@ -160,39 +267,66 @@ export default function V2ChallengePage() {
     }
   };
 
-  // Keyboard shortcuts: 1-4 pick option, Enter submits.
+  // Keyboard: 1-N pick option, F cycle format, Enter submit.
   useEffect(() => {
     if (!challenge || phase !== 'answering') return;
     const handler = (e: KeyboardEvent) => {
       const t = e.target;
       if (t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
       if (['1', '2', '3', '4', '5'].includes(e.key)) {
+        if (format === 'rank-fixes' || format === 'blind-fix') return;
+        if (format === 'diff-review' && verdict !== 'request-changes') return;
+        if (locateMode && selectedLine === null) return;
         const idx = parseInt(e.key, 10) - 1;
-        if (idx < challenge.fixOptions.length) setSelectedOption(idx);
-      } else if (e.key === 'Enter' && selectedOption !== null) {
+        const upperBound = format === 'impostor' ? impostorOptionCount : challenge.fixOptions.length;
+        if (idx >= upperBound) return;
+        setSelectedOption(idx);
+      } else if (e.key === 'Enter' && canSubmit) {
         handleSubmit();
+      } else if ((e.key === 'f' || e.key === 'F') && supportedFormats.length > 1) {
+        const i = supportedFormats.indexOf(format);
+        const next = supportedFormats[(i + 1) % supportedFormats.length];
+        const locked = PRO_FORMATS.includes(next) && !isPro;
+        if (!locked) setFormat(next);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [challenge, phase, selectedOption]);
+  }, [challenge, phase, format, selectedOption, selectedLine, rankOrder, patch, verdict, canSubmit, supportedFormats, locateMode, impostorOptionCount, isPro]);
 
   const handleNext = () => {
     if (!challenge) return;
     const idx = allInVideo.findIndex(c => c.id === challenge.id);
     const next = idx >= 0 && idx + 1 < allInVideo.length ? allInVideo[idx + 1] : null;
-    if (next) {
-      window.location.href = `/v2/challenge/${next.id}`;
-    } else {
-      window.location.href = '/v2/';
-    }
+    window.location.href = next ? `/v2/challenge/${next.id}` : '/v2/';
   };
 
   const handleRetry = () => {
     setSelectedOption(null);
+    setSelectedLine(null);
+    setRankOrder(identityOrder);
+    setPatch('');
+    setVerdict(null);
     setPhase('answering');
     setReveal(null);
     startedAt.current = Date.now();
+  };
+
+  const handlePickFormat = (fmt: ChallengeFormat) => {
+    const locked = PRO_FORMATS.includes(fmt) && !isPro;
+    if (locked) {
+      showToast(`${FORMAT_META[fmt].label} is a Pro format — unlock Pro to play.`);
+      return;
+    }
+    setFormat(fmt);
+  };
+
+  const moveRank = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= rankOrder.length) return;
+    const next = rankOrder.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    setRankOrder(next);
   };
 
   if (loading) {
@@ -202,7 +336,6 @@ export default function V2ChallengePage() {
       </V2Shell>
     );
   }
-
   if (notFound || !challenge || !video) {
     return (
       <V2Shell activeNav="Practice" theme={theme} onToggleTheme={toggleTheme} showSearch={false} toast={toast}>
@@ -216,6 +349,13 @@ export default function V2ChallengePage() {
 
   const buggySet = new Set(challenge.buggyLines ?? []);
   const codeLines = challenge.buggyCode.split('\n');
+
+  // Options rendered by MCQ-like formats.
+  const optionList = (() => {
+    const base = challenge.fixOptions.slice();
+    if (format === 'impostor' && challenge.impostorOption) base.push(challenge.impostorOption);
+    return base;
+  })();
 
   return (
     <V2Shell activeNav="Practice" theme={theme} onToggleTheme={toggleTheme} showSearch={false} toast={toast}>
@@ -241,6 +381,38 @@ export default function V2ChallengePage() {
 
           <h1 className="v2-challenge-title">{challenge.chapter}</h1>
 
+          {/* ---- Format chooser ---- */}
+          {supportedFormats.length > 1 && phase === 'answering' && (
+            <div className="v2-format-chooser" role="group" aria-label="Format">
+              <span className="label">Format:</span>
+              {supportedFormats.map(fmt => {
+                const meta = FORMAT_META[fmt];
+                const Ico = meta.icon;
+                const selected = fmt === format;
+                const locked = PRO_FORMATS.includes(fmt) && !isPro;
+                return (
+                  <button
+                    key={fmt}
+                    type="button"
+                    className={[
+                      selected ? 'active' : '',
+                      locked ? 'locked' : '',
+                    ].filter(Boolean).join(' ')}
+                    title={locked ? `${meta.hint} (Pro — unlock to play)` : meta.hint}
+                    onClick={() => handlePickFormat(fmt)}
+                    aria-pressed={selected}
+                  >
+                    <Ico size={13} />
+                    <span>{meta.label}</span>
+                    {locked && <Lock size={11} className="lock-ico" />}
+                  </button>
+                );
+              })}
+              <span className="hint">Press F to cycle</span>
+            </div>
+          )}
+
+          {/* ---- Reveal ---- */}
           {phase === 'revealed' && reveal && (
             <div className="v2-reveal">
               <div className={`v2-reveal-verdict ${reveal.isCorrect ? 'correct' : 'incorrect'}`}>
@@ -268,9 +440,7 @@ export default function V2ChallengePage() {
                 <button className="v2-primary" onClick={handleNext}>
                   Next drill <ArrowRight size={14} style={{ marginLeft: 4 }} />
                 </button>
-                <button className="v2-secondary" onClick={handleRetry}>
-                  Try again
-                </button>
+                <button className="v2-secondary" onClick={handleRetry}>Try again</button>
                 <a className="v2-secondary" href="/v2/" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
                   Back to dashboard
                 </a>
@@ -278,13 +448,56 @@ export default function V2ChallengePage() {
             </div>
           )}
 
-          {phase === 'answering' && (
+          {/* ---- Format-specific preamble banners ---- */}
+          {phase === 'answering' && locateMode && (
+            <div className={`v2-step-banner${selectedLine !== null ? ' done' : ''}`}>
+              {selectedLine !== null ? <Check size={14} className="ico" /> : <Crosshair size={14} className="ico" />}
+              <span>
+                {selectedLine !== null
+                  ? (<>Line <strong style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{selectedLine}</strong> marked as the suspect — now pick the fix below.</>)
+                  : (<><strong>Step 1:</strong> click the suspect line in the code.</>)}
+              </span>
+            </div>
+          )}
+          {phase === 'answering' && format === 'red-herring' && (
+            <div className="v2-step-banner warn">
+              <Crosshair size={14} className="ico" />
+              <span><strong>Red herring:</strong> one suspicious line is a decoy. A wrong line is a full miss (no partial credit).</span>
+            </div>
+          )}
+          {phase === 'answering' && format === 'rank-fixes' && (
+            <div className="v2-step-banner">
+              <ListOrdered size={14} className="ico" />
+              <span>Rank the fixes <strong>worst → best</strong> with the arrows. Any order submits.</span>
+            </div>
+          )}
+          {phase === 'answering' && format === 'blind-fix' && (
+            <div className="v2-step-banner">
+              <Pencil size={14} className="ico" />
+              <span><strong>Blind fix:</strong> write the corrected code yourself. Whitespace and punctuation are normalised.</span>
+            </div>
+          )}
+          {phase === 'answering' && format === 'diff-review' && (
+            <div className="v2-step-banner">
+              <GitPullRequest size={14} className="ico" />
+              <span><strong>Diff review:</strong> treat the snippet as a pull-request. Approve, request changes, or leave a comment.</span>
+            </div>
+          )}
+          {phase === 'answering' && format === 'impostor' && (
+            <div className="v2-step-banner warn">
+              <Ghost size={14} className="ico" />
+              <span><strong>Impostor round:</strong> one fix <em>looks</em> correct but is subtly wrong. {impostorOptionCount} options this round.</span>
+            </div>
+          )}
+
+          {phase === 'answering' && !locateMode && format !== 'rank-fixes' && format !== 'blind-fix' && format !== 'diff-review' && format !== 'impostor' && (
             <p className="v2-challenge-prompt">
-              Review the snippet below. One of the highlighted lines contains a bug. Pick the
-              fix that correctly resolves it.
+              Review the snippet below. One of the highlighted lines contains a bug. Pick the fix
+              that correctly resolves it.
             </p>
           )}
 
+          {/* ---- Code viewer ---- */}
           <div className="v2-code" aria-label="Buggy code">
             <div className="v2-code-head">
               <span className="filename">{challenge.filename}</span>
@@ -294,8 +507,21 @@ export default function V2ChallengePage() {
               {codeLines.map((line, i) => {
                 const n = i + 1;
                 const buggy = buggySet.has(n);
+                const clickable = phase === 'answering' && locateMode;
+                const picked = locateMode && selectedLine === n;
                 return (
-                  <div key={i} className={`v2-code-line${buggy ? ' buggy' : ''}`}>
+                  <div
+                    key={i}
+                    className={[
+                      'v2-code-line',
+                      buggy ? 'buggy' : '',
+                      clickable ? 'clickable' : '',
+                      picked ? 'picked' : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => {
+                      if (clickable) setSelectedLine(n);
+                    }}
+                  >
                     <span className="ln">{n}</span>
                     <span className="code-text">{line || ' '}</span>
                   </div>
@@ -304,54 +530,145 @@ export default function V2ChallengePage() {
             </pre>
           </div>
 
-          <div className="v2-options-head">
-            <h3>Pick the correct fix</h3>
-            <span className="hint">Press 1–4, Enter to submit</span>
-          </div>
-          <div className="v2-options" role="radiogroup" aria-label="Fix options">
-            {challenge.fixOptions.map((opt, i) => {
-              const revealed = phase === 'revealed';
-              const isSelected = selectedOption === i;
-              const isCorrectAnswer = revealed && i === challenge.correctOption;
-              const isWrongPick = revealed && isSelected && i !== challenge.correctOption;
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  className={[
-                    'v2-option',
-                    !revealed && isSelected ? 'selected' : '',
-                    isCorrectAnswer ? 'correct' : '',
-                    isWrongPick ? 'incorrect' : '',
-                  ].filter(Boolean).join(' ')}
-                  onClick={() => phase === 'answering' && setSelectedOption(i)}
-                  disabled={phase === 'revealed'}
-                  role="radio"
-                  aria-checked={isSelected}
-                >
-                  <span className="v2-option-badge">
-                    {revealed && isCorrectAnswer ? <Check size={16} /> :
-                     revealed && isWrongPick ? <X size={16} /> :
-                     OPTION_LETTERS[i]}
-                  </span>
-                  <span>{opt}</span>
-                  <span className="v2-option-kbd">[{i + 1}]</span>
+          {/* ---- Per-format answer panel ---- */}
+          {phase === 'answering' && (format === 'spot-fix' || format === 'impostor' || locateMode) && (
+            <>
+              <div className="v2-options-head">
+                <h3>
+                  {locateMode ? 'Step 2: pick the correct fix' : 'Pick the correct fix'}
+                </h3>
+                <span className="hint">Press 1–{Math.min(5, format === 'impostor' ? impostorOptionCount : challenge.fixOptions.length)}, Enter to submit</span>
+              </div>
+              <div
+                className={`v2-options${locateMode && selectedLine === null ? ' locked' : ''}`}
+                role="radiogroup"
+                aria-label="Fix options"
+              >
+                {optionList.map((opt, i) => {
+                  const revealed = false;
+                  const isSelected = selectedOption === i;
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      className={['v2-option', isSelected ? 'selected' : ''].filter(Boolean).join(' ')}
+                      onClick={() => (locateMode && selectedLine === null ? null : setSelectedOption(i))}
+                      role="radio"
+                      aria-checked={isSelected}
+                      disabled={revealed}
+                    >
+                      <span className="v2-option-badge">{OPTION_LETTERS[i]}</span>
+                      <span>{opt}</span>
+                      <span className="v2-option-kbd">[{i + 1}]</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {phase === 'answering' && format === 'rank-fixes' && (
+            <>
+              <div className="v2-options-head">
+                <h3>Your ranking (position 1 = worst, position {rankOrder.length} = best)</h3>
+              </div>
+              <ol className="v2-rank">
+                {rankOrder.map((optIdx, i) => (
+                  <li key={optIdx} className="v2-rank-item">
+                    <div className="v2-rank-pos">{i + 1}</div>
+                    <div>
+                      <span className="letter">[{OPTION_LETTERS[optIdx]}]</span>
+                      {challenge.fixOptions[optIdx]}
+                    </div>
+                    <div className="v2-rank-arrows">
+                      <button type="button" aria-label={`Move option ${OPTION_LETTERS[optIdx]} up`}
+                        disabled={i === 0} onClick={() => moveRank(i, -1)}>
+                        <ChevronUp size={14} />
+                      </button>
+                      <button type="button" aria-label={`Move option ${OPTION_LETTERS[optIdx]} down`}
+                        disabled={i === rankOrder.length - 1} onClick={() => moveRank(i, 1)}>
+                        <ChevronDown size={14} />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
+
+          {phase === 'answering' && format === 'blind-fix' && (
+            <>
+              <div className="v2-options-head">
+                <h3>
+                  Your fix (lines{' '}
+                  {(challenge.buggyLines ?? []).join(', ')})
+                </h3>
+              </div>
+              <textarea
+                className="v2-blind-area"
+                value={patch}
+                onChange={e => setPatch(e.target.value)}
+                spellCheck={false}
+                placeholder={'// write the fixed code here'}
+              />
+              <p className="v2-blind-meta">
+                {patch.trim().length} character{patch.trim().length === 1 ? '' : 's'}
+              </p>
+            </>
+          )}
+
+          {phase === 'answering' && format === 'diff-review' && (
+            <>
+              <div className="v2-options-head">
+                <h3>Your verdict</h3>
+              </div>
+              <div className="v2-verdicts" role="radiogroup" aria-label="Verdict">
+                <button type="button" className={`v2-verdict approve${verdict === 'approve' ? ' selected' : ''}`}
+                  onClick={() => setVerdict('approve')} aria-pressed={verdict === 'approve'}>
+                  <span className="top"><Check size={14} /> Approve</span>
+                  <span className="hint">LGTM, ship it as proposed.</span>
                 </button>
-              );
-            })}
-          </div>
+                <button type="button" className={`v2-verdict request-changes${verdict === 'request-changes' ? ' selected' : ''}`}
+                  onClick={() => setVerdict('request-changes')} aria-pressed={verdict === 'request-changes'}>
+                  <span className="top"><X size={14} /> Request changes</span>
+                  <span className="hint">The patch is wrong — pick the correct fix below.</span>
+                </button>
+                <button type="button" className={`v2-verdict comment${verdict === 'comment' ? ' selected' : ''}`}
+                  onClick={() => setVerdict('comment')} aria-pressed={verdict === 'comment'}>
+                  <span className="top"><MessageSquare size={14} /> Comment</span>
+                  <span className="hint">Neither clearly correct nor broken — leave a note.</span>
+                </button>
+              </div>
+
+              {verdict === 'request-changes' && (
+                <>
+                  <div className="v2-options-head">
+                    <h3>Which fix would unblock the review?</h3>
+                    <span className="hint">Press 1–4, Enter to submit</span>
+                  </div>
+                  <div className="v2-options" role="radiogroup" aria-label="Fix options">
+                    {challenge.fixOptions.map((opt, i) => (
+                      <button key={i} type="button"
+                        className={['v2-option', selectedOption === i ? 'selected' : ''].filter(Boolean).join(' ')}
+                        onClick={() => setSelectedOption(i)}
+                        role="radio" aria-checked={selectedOption === i}>
+                        <span className="v2-option-badge">{OPTION_LETTERS[i]}</span>
+                        <span>{opt}</span>
+                        <span className="v2-option-kbd">[{i + 1}]</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
 
           {phase === 'answering' && (
             <div className="v2-submit-bar">
               <div className="v2-confidence" role="group" aria-label="Confidence">
                 <span className="v2-confidence-label">Confidence:</span>
                 {(['guess', 'sure', 'certain'] as Confidence[]).map(c => (
-                  <button
-                    key={c}
-                    type="button"
-                    className={confidence === c ? 'active' : ''}
-                    onClick={() => setConfidence(c)}
-                  >
+                  <button key={c} type="button" className={confidence === c ? 'active' : ''} onClick={() => setConfidence(c)}>
                     {c === 'guess' ? '🤔 Guess' : c === 'sure' ? '😎 Sure' : '🔥 Certain'}
                   </button>
                 ))}
@@ -360,7 +677,7 @@ export default function V2ChallengePage() {
                 type="button"
                 className="v2-submit"
                 onClick={handleSubmit}
-                disabled={selectedOption === null || isSubmitting}
+                disabled={!canSubmit || isSubmitting}
               >
                 {isSubmitting ? 'Submitting…' : (<>Submit <ArrowRight size={16} /></>)}
               </button>
@@ -376,6 +693,7 @@ export default function V2ChallengePage() {
             <div className="row"><span>Chapter</span><strong>{challenge.chapter}</strong></div>
             <div className="row"><span>From</span><strong>{video.channel}</strong></div>
             <div className="row"><span>Timestamp</span><strong>{challenge.timestampFormatted}</strong></div>
+            <div className="row"><span>Format</span><strong>{FORMAT_META[format].label}</strong></div>
           </div>
 
           <div className="v2-rail-card">
@@ -397,17 +715,6 @@ export default function V2ChallengePage() {
               </div>
             )}
           </div>
-
-          {hasAdvancedFormats && (
-            <div className="v2-rail-banner">
-              This drill also supports{' '}
-              <strong>{supportedFormats.filter(f => f !== 'spot-fix').length}</strong>{' '}
-              other formats (locate-then-fix, rank-fixes, blind-fix…).{' '}
-              <a href={`/v1/#/challenge/${encodeURIComponent(challenge.id)}`}>
-                Open in classic view →
-              </a>
-            </div>
-          )}
 
           <div className="v2-rail-card">
             <h3>In this video</h3>
