@@ -700,6 +700,7 @@ function navHref(k: NavKey): string {
   switch (k) {
     case 'Home': return '/v2/';
     case 'Practice': return '/v2/challenge/react-state-batching';
+    case 'Recall': return '/v2/recall';
     default: return '#';
   }
 }

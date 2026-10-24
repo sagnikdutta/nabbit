@@ -40,7 +40,7 @@ const NAV_LINKS: NavLink[] = [
   { key: 'Import Video',  icon: '▣', href: '/v2/' }, // Dashboard owns the import form
   { key: 'My Library',    icon: '▤', href: '/v2/' },
   { key: 'Practice',      icon: '♧', href: '/v2/challenge/react-state-batching' },
-  { key: 'Recall',        icon: '◴', href: '/v2/' }, // TODO V2-B/3
+  { key: 'Recall',        icon: '◴', href: '/v2/recall' },
   { key: 'Progress',      icon: '📊', href: '/v2/' },
 ];
 const NAV_SECONDARY: NavLink[] = [
