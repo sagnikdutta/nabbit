@@ -9,14 +9,34 @@
  *  < 600px    tight padding, no bunny art
  */
 
-.v2-auth-root { min-height: 100vh; display: flex; flex-direction: column; }
+.v2-auth-root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    /* The hero illustration (bunny + floating cards) IS the background on
+       light mode: it fills the main area and the right-side form card
+       overlays its right third. Dark mode drops the image — it was
+       designed on a near-white canvas and would read as a bright patch. */
+    url('/nabbit-auth-bg.webp') center 60% / cover no-repeat,
+    linear-gradient(180deg, #fbfbff 0%, #f3f1ff 100%);
+}
+.v2-auth-root[data-theme="dark"] {
+  background: var(--bg);
+}
 
 .v2-auth-topbar {
   height: 68px;
   padding: 0 26px;
   display: flex; align-items: center; gap: 20px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  border-bottom: 1px solid rgba(226, 231, 244, 0.6);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: saturate(140%) blur(10px);
+  -webkit-backdrop-filter: saturate(140%) blur(10px);
+}
+.v2-auth-root[data-theme="dark"] .v2-auth-topbar {
+  border-bottom-color: var(--line);
+  background: rgba(13, 23, 38, 0.72);
 }
 .v2-auth-topbar .v2-brand { padding: 0; height: auto; }
 .v2-auth-topbar .v2-brand-mark {
@@ -141,33 +161,24 @@
   line-height: 1.5;
 }
 
-.v2-auth-bunny {
-  position: relative;
-  max-width: 420px;
-  margin-top: 24px;
-}
-.v2-auth-bunny img {
-  display: block;
-  width: 100%;
-  height: auto;
-  filter: drop-shadow(0 20px 40px rgba(104, 71, 255, 0.18));
-}
-.v2-auth-bunny-caption {
-  position: absolute;
-  left: -8px;
-  bottom: 24px;
+/* "From video to mastery" caption sits over the background illustration,
+   just under the feature list. Hidden in dark mode since the illustration
+   isn't shown there. */
+.v2-auth-caption {
+  display: inline-block;
+  margin-top: 12px;
   font-family: "Caveat", "Segoe Script", cursive;
-  font-size: 20px;
+  font-size: 22px;
   color: var(--purple);
-  transform: rotate(-6deg);
+  transform: rotate(-4deg);
   white-space: nowrap;
 }
-.v2-auth-bunny-caption::after {
-  content: "↘";
-  display: inline-block;
-  margin-left: 6px;
-  font-size: 22px;
+.v2-auth-caption::after {
+  content: " ↘";
+  margin-left: 4px;
+  font-size: 24px;
 }
+.v2-auth-root[data-theme="dark"] .v2-auth-caption { display: none; }
 
 /* ----- Right: card ----- */
 .v2-auth-card {
@@ -482,8 +493,9 @@
     gap: 36px;
     padding: 36px 32px;
   }
-  .v2-auth-bunny { display: none; }
+  .v2-auth-root { background-image: none; }
   .v2-auth-hero h1 { font-size: 36px; }
+  .v2-auth-caption { display: none; }
 }
 @media (max-width: 600px) {
   .v2-auth-topbar { height: 60px; padding: 0 16px; gap: 12px; }

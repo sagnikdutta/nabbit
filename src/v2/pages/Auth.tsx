@@ -63,7 +63,6 @@ export default function V2AuthPage({
 }: AuthPageProps) {
   const [theme, setTheme] = useState<Theme>('light');
   const [mode, setMode] = useState<Mode>(initialMode);
-  const [showBunny, setShowBunny] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -282,17 +281,7 @@ export default function V2AuthPage({
             </li>
           </ul>
 
-          {showBunny && (
-            <div className="v2-auth-bunny">
-              <span className="v2-auth-bunny-caption">From video to mastery</span>
-              <img
-                src="/nabbit-bunny-hero.png"
-                alt=""
-                aria-hidden="true"
-                onError={() => setShowBunny(false)}
-              />
-            </div>
-          )}
+          <span className="v2-auth-caption">From video to mastery</span>
         </section>
 
         <section className="v2-auth-card" aria-labelledby={`${formId}-title`}>
