@@ -6,7 +6,7 @@ import { YouTubeImportCard } from '../components/YouTubeImportCard';
 import { DailyDrillCard } from '../components/DailyDrillCard';
 import { BossDrillCard } from '../components/BossDrillCard';
 import { SeasonBanner } from '../components/SeasonBanner';
-import { Play, CheckCircle2, ArrowRight, ShieldCheck, BookOpen, Flame, Clock, Youtube, Trophy } from 'lucide-react';
+import { Play, CheckCircle2, ArrowRight, ShieldCheck, BookOpen, Flame, Clock, Youtube, Trophy, Users } from 'lucide-react';
 
 export interface LibraryScreenProps {
   videos: Video[];
@@ -18,6 +18,7 @@ export interface LibraryScreenProps {
   mode?: 'landing' | 'dashboard';
   onGoToRecall?: () => void;
   onGoToLeaderboard?: () => void;
+  onGoToCommunity?: () => void;
   onSignUp?: () => void;
   onSelectVideo: (videoId: string) => void;
   onSelectChallenge: (challengeId: string, opts?: { fromBoss?: boolean }) => void;
@@ -36,6 +37,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   mode = 'landing',
   onGoToRecall,
   onGoToLeaderboard,
+  onGoToCommunity,
   onSignUp,
   onSelectVideo,
   onSelectChallenge,
@@ -128,6 +130,21 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                 {!isPro && (
                   <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-[var(--color-warning-weak)] text-[var(--color-warning-ink)] uppercase">Pro</span>
                 )}
+              </span>
+              <ArrowRight className="w-4 h-4 text-[var(--color-muted)]" />
+            </button>
+          )}
+
+          {/* Phase 8 v3 — community drafts queue (free, visible to all signed-in users). */}
+          {onGoToCommunity && (
+            <button
+              type="button"
+              onClick={onGoToCommunity}
+              className="w-full flex items-center justify-between gap-3 rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-left cursor-pointer hover:bg-[var(--color-surface-subtle)] transition-colors"
+            >
+              <span className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+                <Users className="w-4 h-4 text-[var(--color-accent)]" />
+                Community drafts
               </span>
               <ArrowRight className="w-4 h-4 text-[var(--color-muted)]" />
             </button>

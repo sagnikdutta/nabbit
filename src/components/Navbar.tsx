@@ -3,8 +3,8 @@ import { Target, Moon, Sun, Flame, LogIn, LogOut, ChevronDown } from 'lucide-rea
 import { UserAccount } from '../lib/types';
 
 export interface NavbarProps {
-  currentRoute: 'library' | 'challenge' | 'reveal' | 'recall' | 'auth' | 'leaderboard';
-  onNavigate: (route: 'library' | 'challenge' | 'recall' | 'auth' | 'leaderboard', param?: string) => void;
+  currentRoute: 'library' | 'challenge' | 'reveal' | 'recall' | 'auth' | 'leaderboard' | 'community';
+  onNavigate: (route: 'library' | 'challenge' | 'recall' | 'auth' | 'leaderboard' | 'community', param?: string) => void;
   activeStreak: number;
   dueCount: number;
   theme: 'light' | 'dark';

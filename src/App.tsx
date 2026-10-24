@@ -18,11 +18,12 @@ import { RecallDashboardScreen } from './screens/RecallDashboardScreen';
 
 import { AuthScreen } from './screens/AuthScreen';
 import { LeaderboardScreen } from './screens/LeaderboardScreen';
+import { CommunityScreen } from './screens/CommunityScreen';
 import { trackTrialView, trackTrialCompleted, claimLeads } from './lib/leads';
 import { UserAccount } from './lib/types';
 import { supabase } from './lib/supabase';
 
-type Route = 'library' | 'challenge' | 'recall' | 'auth' | 'leaderboard';
+type Route = 'library' | 'challenge' | 'recall' | 'auth' | 'leaderboard' | 'community';
 
 // --- Hash router (B5): each screen has a shareable, refresh-safe URL ---
 // #/              → library
@@ -38,6 +39,7 @@ function parseHash(): { route: Route; challengeId: string | null } {
   if (h === '/recall') return { route: 'recall', challengeId: null };
   if (h === '/auth' || h === '/signin' || h === '/signup') return { route: 'auth', challengeId: null };
   if (h === '/leaderboard') return { route: 'leaderboard', challengeId: null };
+  if (h === '/community') return { route: 'community', challengeId: null };
   return { route: 'library', challengeId: null };
 }
 
@@ -46,6 +48,7 @@ function hashFor(route: Route, challengeId?: string): string {
   if (route === 'recall') return '#/recall';
   if (route === 'auth') return '#/auth';
   if (route === 'leaderboard') return '#/leaderboard';
+  if (route === 'community') return '#/community';
   return '#/';
 }
 
@@ -556,6 +559,7 @@ export default function App() {
             mode={currentUser ? 'dashboard' : 'landing'}
             onGoToRecall={() => handleNavigate('recall')}
             onGoToLeaderboard={() => handleNavigate('leaderboard')}
+            onGoToCommunity={() => handleNavigate('community')}
             onSignUp={() => handleOpenAuth('signup')}
             onSelectVideo={handleSelectVideo}
             onSelectChallenge={handleSelectChallenge}
@@ -594,6 +598,14 @@ export default function App() {
           <LeaderboardScreen
             isPro={isPro}
             onBack={() => handleNavigate('library')}
+          />
+        )}
+
+        {activeRoute === 'community' && (
+          <CommunityScreen
+            signedIn={Boolean(currentUser)}
+            onBack={() => handleNavigate('library')}
+            onOpenAuth={() => handleOpenAuth('signin')}
           />
         )}
 
