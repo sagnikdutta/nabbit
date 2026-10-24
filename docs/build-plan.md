@@ -11,6 +11,8 @@
 > **Status (23 Oct):** **Phase 8 — Challenge Engine v2** planned (see section below). Full build, staged v1/v2/v3. Expands today's single-verb MCQ into a 4-pillar engine (more formats, confidence × speed × Elo × streaks, Daily Drill + distribution + shareable grid, Pro-gated hard modes). Pulls Phase 7 progress sync forward. Decisions locked: additive `Challenge` type + Gemini offline backfill; Supabase tables now; Pro = Boss drills + Seasons/ranked ladder + Impostor + Red herring.
 >
 > **Status (23 Oct, later):** **Phase 8 v1 shipped locally** (commits `982b463` v1a + `e131a6b` v1b + `827e85d` v1c + v1d finishing touches; unpushed). All ten v1 bullets done; browser-verified end-to-end on `react-state-batching` (Spot-fix, Locate-then-fix, Rank-fixes); **50 tests pass** (`npm test`); typecheck clean (`npm run lint`). Every curated drill now plays all three v1 formats — `rankedFixes` placeholders authored via `npm run backfill -- --defaults --with-rankings` (quality upgrade: `--gemini`). Passive weekly streak freeze shipped (`src/lib/streak-freeze.ts`), consumed in `recordAttempt`, surfaced silently by `computeStats`. **v2 and v3 remain** — backend go-live (migrations `0004`–`0008`, SupabaseStore, Daily Drill, per-concept Elo, Blind-fix) then Pro + narrative (Diff-review, Impostor, Red-herring, prod-incident skin, Boss drills, Seasons, community drafts).
+>
+> **Status (24 Oct):** **Phase 8 v2 shipped locally** across commits `f2835e9` (v2a — migrations 0004–0008 + RPCs) · `d5537ec` (v2b — SupabaseStore + routing + merge flow) · `65a454f` (v2c — Daily Drill card, mastery list, Elo delta chip on Reveal, ShareGrid Elo row) · `9f41823` (v2d — BlindFixPanel + Levenshtein, Pro-gated Boss drill card + Seasons leaderboard) · v2e (Edge Function + Gemini pass #2 + build-plan). Browser-verified end-to-end against the live nabbit Supabase project: `apply_attempt` returned `newRating: 1223` / `eloDelta: +11` / `globalStreak: 3`; data landed in `attempts`, `concept_elo`, `streaks`, `recall_items`; Reveal shows Rating chip + ShareGrid Elo row; Boss + Leaderboard surfaces render the lock badge for the current non-Pro `tester@example.com`; Blind-fix on `effect-missing-cleanup` scored `+353`. **64 tests pass**. Pulled v3's Boss-drill and Seasons UI shells forward (the gate itself is what proves the Pro surface). **v3 remains** — Diff-review, Impostor + Red-herring (Pro), prod-incident skin, community drafts (migration 0009 + queue + auto-publish), Gemini pass #3 (human-reviewed Impostor/Red-herring content).
 
 ---
 
@@ -561,25 +563,25 @@ Each pass writes back to `src/content/data.ts` via a code-mod (ts-morph). Valida
 
 **Acceptance**: every curated drill plays in all three v1 formats ✅ (Spot-fix + Locate-then-fix on every drill via `normalize.ts` + backfill `--defaults`; Rank-fixes on every drill via backfill `--with-rankings` placeholder — `react-state-batching` was hand-authored, the rest are heuristic placeholders meant to be upgraded by `--gemini`); reveal shows score + combo + grid card ✅; share grid copies the correct glyph string ✅; `npm run lint` passes ✅; `npm test` → 50/50 ✅; the challenge screen holds 375 px wide ✅ (same pre-existing 5px body overflow as before this phase).
 
-**v2 — "Everyone's playing"** (backend go-live; progress sync; Daily Drill; Elo)
-- [ ] Migrations `0004`–`0008` applied in dev + prod Supabase.
-- [ ] `SupabaseStore` adapter + `api.ts` routing; `applyAttempt` RPC used on every submit.
-- [ ] First-sign-in flow: push any existing local `attempts` + `recall_items` into Supabase via `merge_local_progress` (addresses the Phase 7 open question).
-- [ ] Daily Drill card on `LibraryScreen` ("Today's bug · N others have played"); `submit_daily_pick` RPC; real distribution bar on reveal.
-- [ ] Per-concept Elo visible: mastery list on `RecallDashboardScreen`, inline "1420 → 1428 ↑8" badge on `RevealScreen`.
-- [ ] Shareable grid upgraded to use real distribution + Elo delta row.
-- [ ] Move `src/lib/reminders.ts` client slice onto a Supabase Edge Function (daily cron).
-- [ ] Add `BlindFixPanel` (free) + Levenshtein grader.
-- [ ] Gemini backfill pass #2 (canonical patch + diff hunks).
+**v2 — "Everyone's playing"** (backend go-live; progress sync; Daily Drill; Elo) — SHIPPED ✅
+- [x] Migrations `0004`–`0008` applied — user ran them in the live nabbit Supabase project; files live at `supabase/migrations/0004_progress_sync_and_pro.sql` through `0008_streaks_and_boss.sql`. Idempotent (drop-then-create for apply_attempt as its signature evolves across migrations).
+- [x] `SupabaseStore` adapter + `api.ts` routing; `apply_attempt` RPC used on every signed-in submit. Anonymous trial stays on LocalStore.
+- [x] First-sign-in flow: `api.mergeLocalProgressIntoSupabase()` runs on auth-form success and on restored sessions; `merge_local_progress` RPC dedupes server-side on `(user_id, challenge_id, at)`; one-time local flag per user per browser.
+- [x] Daily Drill card on `LibraryScreen` (`DailyDrillCard.tsx`); `submit_daily_pick` + `get_daily_distribution` RPCs. Card hides when no row seeded for today — owner inserts via SQL editor (helper comment at top of the component).
+- [x] Per-concept Elo visible: `MasteryList.tsx` on `RecallDashboardScreen` (buckets: Diamond ≥ 1700, Platinum ≥ 1500, Gold ≥ 1300, else Silver); inline "1200 → 1212 ↑+12" chip on `RevealScreen`.
+- [x] Shareable grid upgraded with Elo delta row and uses server-authoritative `globalStreak` for the flame row. Real daily distribution flows into Autopsy when the drill is today's Daily Drill (plumbing in place; full switch is a one-line follow-up when Daily seeds are routine).
+- [x] Daily reminders Edge Function at `supabase/functions/daily-reminders/index.ts`. Queries overdue `recall_items` on cron and emits a per-user summary. Delivery (push / email) is a `DELIVERY_PLACEHOLDER` — wire your provider there; a `reminder_log(user_id, for_date)` dedupe table lands with the first provider.
+- [x] `BlindFixPanel.tsx` + Levenshtein grader in `grading.ts` (whitespace-normalised similarity: ≥ 0.9 full-correct, ≥ 0.7 partial). Lights up on every drill via `normalize.ts` fallback (`canonicalPatch` defaults to `correctCode`).
+- [x] Gemini backfill pass #2 — `scripts/backfill-challenge-fields.ts` now authors `canonicalPatch` on `--gemini` and `--with-patches` (defaults mode writes the normalize-equivalent fallback to disk for reviewability).
 
-**Acceptance**: Daily Drill writes to prod; two separate accounts in different browsers see each other's picks in the distribution within one day; concept Elo persists across devices; local-only trial still works for anonymous users.
+**Acceptance**: Daily Drill writes to prod ✅ (RPCs live); two separate accounts in different browsers see each other's picks in the distribution ⬜ (plumbing works end-to-end but hasn't been multi-browser demo'd — depends on `daily_drill` rows being seeded); concept Elo persists across devices ✅ (verified end-to-end on `tester@example.com`); local-only trial still works for anonymous users ✅ (routing branches on `useSupabase()`).
 
 **v3 — "Depth and heat"** (Pro formats + narrative + community)
 - [ ] `DiffReviewPanel` (free).
 - [ ] `ImpostorPanel` + red-herring mode on `LocateThenFixPanel`, **Pro-gated** with lock badge + CTA into the B7 Pro teaser.
 - [ ] Prod-incident skin — `--incident-*` tokens in `src/theme/tokens.css`; auto-applied at `difficulty === 'Advanced' || userElo >= 1500`; profile toggle.
-- [ ] Boss drills (Pro) — "This week's boss" card on `LibraryScreen`; `generate_boss_drill` RPC; results feed Elo via `apply_attempt`.
-- [ ] Seasons (Pro) — season banner (countdown + current bucket + target bucket); public leaderboard page at `#/leaderboard`; end-of-season soft-reset job (Supabase Edge, cron).
+- [~] Boss drills (Pro) — **UI shell + RPC pulled into v2d.** `BossDrillCard` on `LibraryScreen` with Pro gate (lock badge + "Unlock with Pro" CTA for non-Pro; Pro users call `generate_boss_drill` RPC). What remains for v3: feed completion back into `apply_attempt` with a `is_boss` flag so the week's completion shows a "Boss cleared" state; a dedicated multi-drill boss flow instead of launching the first candidate.
+- [~] Seasons (Pro) — **UI shell + RPC pulled into v2d.** `#/leaderboard` page renders `season_leaderboard` for Pro users and the locked state otherwise. `close_season(ending, next)` admin helper applies percentile buckets + soft Elo reset (newRating = 1200 + (old − 1200) × 0.6). What remains for v3: season banner on Library (countdown + current + target bucket); the end-of-season rollover job on cron (currently manual via SQL editor); seeding at least two placements so leaderboard isn't empty.
 - [ ] User-authored drills (free queue) — migration `0009`; paste-URL in Library writes to `community_drafts`; `#/community` moderation queue; auto-publish ≥ N upvotes.
 - [ ] Gemini backfill pass #3 — fills `impostorOption` + `secondFlaw`; **every row human-reviewed before the Pro formats light up on it**.
 

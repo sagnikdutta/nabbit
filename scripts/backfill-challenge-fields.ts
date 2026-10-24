@@ -37,15 +37,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_FILE = path.resolve(__dirname, '../src/content/data.ts');
 
-type Flags = { mode: 'defaults' | 'gemini'; dryRun: boolean; only?: string; withRankings: boolean };
+type Flags = {
+  mode: 'defaults' | 'gemini';
+  dryRun: boolean;
+  only?: string;
+  withRankings: boolean;
+  withPatches: boolean;
+};
 
 function parseFlags(argv: string[]): Flags {
-  const flags: Flags = { mode: 'defaults', dryRun: false, withRankings: false };
+  const flags: Flags = { mode: 'defaults', dryRun: false, withRankings: false, withPatches: false };
   for (const a of argv) {
     if (a === '--defaults') flags.mode = 'defaults';
     else if (a === '--gemini') flags.mode = 'gemini';
     else if (a === '--dry-run') flags.dryRun = true;
     else if (a === '--with-rankings') flags.withRankings = true;
+    else if (a === '--with-patches') flags.withPatches = true;   // Phase 8 v2 (pass #2)
     else if (a.startsWith('--only=')) flags.only = a.slice('--only='.length);
   }
   return flags;
@@ -82,6 +89,7 @@ interface Backfill {
   rankedFixes?: number[];
   availableFormats?: ChallengeFormat[];
   seedDistribution?: number[];
+  canonicalPatch?: { oldLines: number[]; newText: string };   // Phase 8 v2 (pass #2)
 }
 
 function planDefaults(challenges: Challenge[], flags: Flags): Backfill[] {
@@ -104,6 +112,14 @@ function planDefaults(challenges: Challenge[], flags: Flags): Backfill[] {
     // every drill. Quality: not great — real rankings should come from --gemini.
     if (flags.withRankings && !Array.isArray(c.rankedFixes)) {
       b.rankedFixes = defaultRankedFixes(c);
+      any = true;
+    }
+    // --with-patches (Phase 8 v2 pass #2): write the correctCode-derived
+    // canonicalPatch to disk for reviewability. Runtime normalize already
+    // derives this, so this is a no-op visibility change — Gemini mode
+    // writes tighter, line-level patches.
+    if (flags.withPatches && !c.canonicalPatch) {
+      b.canonicalPatch = { oldLines: c.buggyLines, newText: c.correctCode };
       any = true;
     }
     if (any) out.push(b);
@@ -134,8 +150,11 @@ async function planGemini(challenges: Challenge[], flags: Flags): Promise<Backfi
 
 Concept: ${c.concept}
 Difficulty: ${c.difficulty}
-Code (one planted flaw):
+Buggy snippet (one planted flaw):
 ${c.buggyCode}
+
+Known-correct snippet:
+${c.correctCode}
 
 Fix options (0-indexed):
 ${c.fixOptions.map((o, i) => `${i}. ${o}`).join('\n')}
@@ -146,6 +165,7 @@ Return a JSON object with these keys:
   "buggyLineAnswer": the 1-indexed line number of the canonical bug.
   "rankedFixes": the fix option indices sorted worst (most harmful / most wrong) → best (the correct one, last).
   "seedDistribution": array of ${c.fixOptions.length} numbers summing to 1.0 — a plausible distribution of what newer developers would pick.
+  "canonicalPatch": { "oldLines": [${c.buggyLines.join(', ')}], "newText": "<the smallest correct replacement for the buggy line(s), kept close to the surrounding code's style>" }
 Nothing else, no prose, no code fence.`;
 
     const res = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
@@ -162,6 +182,7 @@ Nothing else, no prose, no code fence.`;
       console.warn(`[${c.id}] JSON parse failed — skipping`);
       continue;
     }
+    const needsPatch = !c.canonicalPatch;
     const b: Backfill = { id: c.id };
     if (needsLine && typeof parsed.buggyLineAnswer === 'number') b.buggyLineAnswer = parsed.buggyLineAnswer;
     if (needsRank && Array.isArray(parsed.rankedFixes) && parsed.rankedFixes.length === c.fixOptions.length) {
@@ -170,7 +191,14 @@ Nothing else, no prose, no code fence.`;
     if (needsDist && Array.isArray(parsed.seedDistribution) && parsed.seedDistribution.length === c.fixOptions.length) {
       b.seedDistribution = parsed.seedDistribution;
     }
-    if (b.buggyLineAnswer || b.rankedFixes || b.seedDistribution) out.push(b);
+    if (needsPatch && parsed.canonicalPatch && typeof parsed.canonicalPatch.newText === 'string'
+        && Array.isArray(parsed.canonicalPatch.oldLines)) {
+      b.canonicalPatch = {
+        oldLines: parsed.canonicalPatch.oldLines,
+        newText: String(parsed.canonicalPatch.newText),
+      };
+    }
+    if (b.buggyLineAnswer || b.rankedFixes || b.seedDistribution || b.canonicalPatch) out.push(b);
     console.log(`[${c.id}] ok`);
   }
   return out;
@@ -208,6 +236,12 @@ function applyBackfills(backfills: Backfill[]): { updated: string; count: number
     if (Array.isArray(b.seedDistribution)) {
       const rounded = b.seedDistribution.map(v => Number(v.toFixed(3)));
       insertions.push(`    seedDistribution: [${rounded.join(', ')}], // backfill`);
+    }
+    if (b.canonicalPatch) {
+      // Serialise the newText with JSON.stringify so quotes, newlines and
+      // backticks round-trip safely into the TS source.
+      const safeText = JSON.stringify(b.canonicalPatch.newText);
+      insertions.push(`    canonicalPatch: { oldLines: [${b.canonicalPatch.oldLines.join(', ')}], newText: ${safeText} }, // backfill`);
     }
     if (insertions.length === 0) continue;
     out = out.replace(idLineRe, m[1] + insertions.join(eol) + eol);
