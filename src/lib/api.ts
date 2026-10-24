@@ -17,6 +17,7 @@ import { grade, computeScore } from './grading';
 import { getFreezeState, markFreezeUsed } from './streak-freeze';
 import { extractYouTubeVideoId, generateFallbackPastedPack } from './youtube';
 import { supabase, isSupabaseConfigured, mapSupabaseUser } from './supabase';
+import { supabaseStore } from './supabase-store';
 
 // Phase 8 v1 — attempt submission context. Confidence/time/combo come from the UI,
 // never affect SRS, and only confidence × time × combo scales the score (see grading.ts).
@@ -37,6 +38,11 @@ export interface AttemptResult {
   score: number;
   scoreBreakdown: ScoreBreakdown;
   comboAfter: number;           // 0 if wrong, prev+1 if correct, prev if partial
+  // Phase 8 v2 — populated when the write went through SupabaseStore.
+  newRating?: number;           // post-attempt per-concept Elo
+  eloDelta?: number;            // signed change (positive on wins, negative on losses)
+  globalStreak?: number;        // server-authoritative global streak
+  freezesRemaining?: number;    // weekly freeze inventory after this attempt
 }
 
 const LOCAL_STORAGE_KEY_ITEMS = 'nabbit_recall_items_v1';
@@ -75,6 +81,17 @@ function friendlyAuthError(message: string | undefined): string {
 export interface Profile {
   name: string;
   onboarded: boolean;
+}
+
+/**
+ * Phase 8 v2 — gate for Supabase-backed reads/writes. True when real credentials
+ * are configured AND a Supabase-provider user is signed in. Anonymous trial
+ * flow stays on LocalStore even with Supabase configured.
+ */
+function useSupabase(): boolean {
+  if (!isSupabaseConfigured() || !supabase) return false;
+  const user = localStore.getCurrentUser();
+  return Boolean(user && user.provider === 'supabase');
 }
 
 class LocalStore {
@@ -792,10 +809,36 @@ export const api = {
   },
 
   async submitAttempt(challengeId: string, input: AttemptInput, meta: AttemptMeta): Promise<AttemptResult> {
+    // Phase 8 v2 — signed-in Supabase users go through SupabaseStore (RPC).
+    // Trial/anonymous and local-fallback users stay on LocalStore (unchanged).
+    if (useSupabase()) {
+      const challenge = localStore.getChallenge(challengeId);
+      if (!challenge) throw new Error(`Challenge not found: ${challengeId}`);
+      return supabaseStore.recordAttempt(challenge, input, meta);
+    }
     return localStore.recordAttempt(challengeId, input, meta);
   },
 
   async getRecallDashboard() {
+    if (useSupabase()) {
+      const [items, attempts, streak] = await Promise.all([
+        supabaseStore.getRecallItems(),
+        supabaseStore.getAttempts(),
+        supabaseStore.getStreakState().catch(() => null),
+      ]);
+      const stats = computeStats(items, attempts, 0);
+      if (streak) {
+        stats.currentStreak = streak.current; // server-authoritative global streak
+      }
+      const now = Date.now();
+      const dueItems = items
+        .filter(i => i.nextReviewAt <= now)
+        .map(i => ({ ...i, challenge: localStore.getChallenge(i.challengeId)! }))
+        .filter(i => Boolean(i.challenge));
+      const allItems = items.map(i => ({ ...i, challenge: localStore.getChallenge(i.challengeId) }));
+      return { dueItems, allItems, stats };
+    }
+
     const { dueItems, stats } = localStore.getDueRecall();
     const allItems = localStore.getRecallItems().map(item => ({
       ...item,
@@ -806,6 +849,35 @@ export const api = {
       allItems,
       stats,
     };
+  },
+
+  /**
+   * Phase 8 v2 — one-shot push of this browser's local attempts + recall_items
+   * into Supabase for the signed-in user. Idempotent: dedupes on
+   * (user_id, challenge_id, at) server-side. We also skip when nothing's local
+   * or when we've already merged this user on this browser.
+   */
+  async mergeLocalProgressIntoSupabase(): Promise<{ merged: boolean; attempts_imported?: number; recall_imported?: number }> {
+    if (!useSupabase()) return { merged: false };
+    const user = localStore.getCurrentUser();
+    if (!user) return { merged: false };
+    const flagKey = `nabbit_sb_merged_v1_${user.id}`;
+    try {
+      if (localStorage.getItem(flagKey) === '1') return { merged: false };
+    } catch {
+      // storage blocked — proceed; a reattempt is harmless (merge is idempotent)
+    }
+    const localAttempts = localStore.getAttempts();
+    const localRecall = localStore.getRecallItems();
+    if (localAttempts.length === 0 && localRecall.length === 0) {
+      try { localStorage.setItem(flagKey, '1'); } catch {}
+      return { merged: false };
+    }
+    const challengeById = new Map<string, Challenge>();
+    for (const c of localStore.getChallenges()) challengeById.set(c.id, c);
+    const res = await supabaseStore.mergeLocalProgress(localAttempts, localRecall, challengeById);
+    try { localStorage.setItem(flagKey, '1'); } catch {}
+    return { merged: true, ...res };
   },
 
   async resetData() {

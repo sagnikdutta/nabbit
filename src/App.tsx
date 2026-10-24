@@ -131,8 +131,15 @@ export default function App() {
   useEffect(() => {
     const id = currentUser?.id ?? null;
     if (lastUserId.current !== undefined && lastUserId.current !== id) {
-      loadData();
-      setProfileName(api.getProfile().name);
+      // Phase 8 v2 — restored Supabase sessions skip handleAuthSuccess entirely,
+      // so attempt the merge here too. Idempotent per-user per-browser.
+      (async () => {
+        if (id) {
+          try { await api.mergeLocalProgressIntoSupabase(); } catch { /* non-fatal */ }
+        }
+        loadData();
+        setProfileName(api.getProfile().name);
+      })();
     }
     lastUserId.current = id;
   }, [currentUser?.id]);
@@ -278,10 +285,22 @@ export default function App() {
     api.signOut();
   };
 
-  const handleAuthSuccess = (user: UserAccount) => {
+  const handleAuthSuccess = async (user: UserAccount) => {
     setCurrentUser(user);
     setTrialResult(null);
     claimLeads();
+    // Phase 8 v2 — first sign-in on this browser pushes any local progress to
+    // Supabase so the user keeps their streak + solved concepts cross-device.
+    // Idempotent server-side; harmless if nothing's local or already merged.
+    try {
+      const res = await api.mergeLocalProgressIntoSupabase();
+      if (res.merged) {
+        console.log('[Nabbit] merged local progress →', res);
+        await loadData(); // refresh dashboard with the now-authoritative server state
+      }
+    } catch (err) {
+      console.warn('[Nabbit] merge_local_progress failed (will stay local):', err);
+    }
     // Land on the library after sign-in, unless they came in via a deep link (e.g. a shared dare).
     if (route === 'auth') go('library');
   };
