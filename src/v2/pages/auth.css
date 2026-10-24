@@ -13,9 +13,9 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  /* Soft lavender canvas in light mode; the hero illustration lives INSIDE
-     the hero column (see .v2-auth-illustration) so it never overlaps
-     headline / body / features. Dark mode just uses the token background. */
+  /* Soft lavender canvas in light mode; the bunny + floating-cards artwork
+     lives as the background of .v2-auth-main below. Dark mode falls back to
+     the token --bg via the override under this block. */
   background: linear-gradient(180deg, #fbfbff 0%, #f3f1ff 100%);
 }
 .v2-auth-root[data-theme="dark"] {
@@ -92,9 +92,6 @@
 .v2-auth-main {
   flex: 1;
   display: grid;
-  /* Hero gets a touch more room so the illustration sits comfortably
-     below the features; form card stays a predictable width so it reads
-     as a clean sheet on the right, matching the reference mockup. */
   grid-template-columns: minmax(0, 1fr) 480px;
   gap: 64px;
   max-width: 1320px;
@@ -102,7 +99,12 @@
   margin: 0 auto;
   padding: 36px 56px 16px;
   align-items: start;
+  /* The illustration (bunny + floating cards) IS the main-area background.
+     Bottom-anchored so the empty top canvas sits behind the headline/body
+     where it reads as blank, and the bunny lands below the feature list. */
+  background: url('/nabbit-auth-bg.webp') center bottom / cover no-repeat;
 }
+.v2-auth-root[data-theme="dark"] .v2-auth-main { background: none; }
 
 /* ----- Left: hero ----- */
 .v2-auth-hero { position: relative; min-width: 0; }
@@ -181,27 +183,7 @@
   font-size: 24px;
 }
 
-/* The source illustration (1536x960) has a lot of empty canvas above the
-   bunny and floating cards. Fixed-height frame + object-position bottom
-   crops it to the content portion so the page stays viewport-tall. */
-.v2-auth-illustration {
-  margin: 4px -32px 0 -24px;
-  width: calc(100% + 56px);
-  max-width: 680px;
-  height: 260px;
-  overflow: hidden;
-  pointer-events: none;
-}
-.v2-auth-illustration img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: 40% 68%;
-}
-
-.v2-auth-root[data-theme="dark"] .v2-auth-caption,
-.v2-auth-root[data-theme="dark"] .v2-auth-illustration { display: none; }
+.v2-auth-root[data-theme="dark"] .v2-auth-caption { display: none; }
 
 /* ----- Right: card ----- */
 .v2-auth-card {
@@ -515,10 +497,10 @@
     grid-template-columns: 1fr;
     gap: 36px;
     padding: 36px 32px;
+    background: none;
   }
   .v2-auth-hero h1 { font-size: 36px; }
-  .v2-auth-caption,
-  .v2-auth-illustration { display: none; }
+  .v2-auth-caption { display: none; }
 }
 @media (max-width: 600px) {
   .v2-auth-topbar { height: 60px; padding: 0 16px; gap: 12px; }
