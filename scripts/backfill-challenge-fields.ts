@@ -90,6 +90,8 @@ interface Backfill {
   availableFormats?: ChallengeFormat[];
   seedDistribution?: number[];
   canonicalPatch?: { oldLines: number[]; newText: string };   // Phase 8 v2 (pass #2)
+  impostorOption?: string;                                     // Phase 8 v3 (pass #3) — Pro
+  secondFlaw?: { line: number; label: string };                // Phase 8 v3 (pass #3) — Pro
 }
 
 function planDefaults(challenges: Challenge[], flags: Flags): Backfill[] {
@@ -166,6 +168,8 @@ Return a JSON object with these keys:
   "rankedFixes": the fix option indices sorted worst (most harmful / most wrong) → best (the correct one, last).
   "seedDistribution": array of ${c.fixOptions.length} numbers summing to 1.0 — a plausible distribution of what newer developers would pick.
   "canonicalPatch": { "oldLines": [${c.buggyLines.join(', ')}], "newText": "<the smallest correct replacement for the buggy line(s), kept close to the surrounding code's style>" }
+  "impostorOption": "<a plausible-looking fix that LOOKS right but is subtly wrong — reproduces the same class of bug via a different mechanism (stale closure, wrong param, etc.). Written as a one-line option body, same voice as the fixOptions above>"
+  "secondFlaw": { "line": <1-indexed line number that is NOT buggyLineAnswer but could plausibly LOOK buggy to a new reviewer>, "label": "<2-5 word decoy label, e.g. 'useState initializer'>" }
 Nothing else, no prose, no code fence.`;
 
     const res = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
@@ -183,6 +187,8 @@ Nothing else, no prose, no code fence.`;
       continue;
     }
     const needsPatch = !c.canonicalPatch;
+    const needsImpostor = typeof c.impostorOption !== 'string' || c.impostorOption.length === 0;
+    const needsSecondFlaw = !c.secondFlaw;
     const b: Backfill = { id: c.id };
     if (needsLine && typeof parsed.buggyLineAnswer === 'number') b.buggyLineAnswer = parsed.buggyLineAnswer;
     if (needsRank && Array.isArray(parsed.rankedFixes) && parsed.rankedFixes.length === c.fixOptions.length) {
@@ -198,7 +204,24 @@ Nothing else, no prose, no code fence.`;
         newText: String(parsed.canonicalPatch.newText),
       };
     }
-    if (b.buggyLineAnswer || b.rankedFixes || b.seedDistribution || b.canonicalPatch) out.push(b);
+    // Phase 8 v3 pass #3 — Pro-only fields. Human-review every drill before
+    // publishing these (plan hard rule): the backfill writes to disk so the
+    // review happens in the git diff before `impostor` + `red-herring`
+    // actually light up in the format chooser.
+    if (needsImpostor && typeof parsed.impostorOption === 'string' && parsed.impostorOption.length > 0) {
+      b.impostorOption = parsed.impostorOption;
+    }
+    if (needsSecondFlaw && parsed.secondFlaw
+        && typeof parsed.secondFlaw.line === 'number'
+        && typeof parsed.secondFlaw.label === 'string') {
+      b.secondFlaw = {
+        line: parsed.secondFlaw.line,
+        label: parsed.secondFlaw.label,
+      };
+    }
+    if (b.buggyLineAnswer || b.rankedFixes || b.seedDistribution || b.canonicalPatch || b.impostorOption || b.secondFlaw) {
+      out.push(b);
+    }
     console.log(`[${c.id}] ok`);
   }
   return out;
@@ -242,6 +265,12 @@ function applyBackfills(backfills: Backfill[]): { updated: string; count: number
       // backticks round-trip safely into the TS source.
       const safeText = JSON.stringify(b.canonicalPatch.newText);
       insertions.push(`    canonicalPatch: { oldLines: [${b.canonicalPatch.oldLines.join(', ')}], newText: ${safeText} }, // backfill`);
+    }
+    if (b.impostorOption) {
+      insertions.push(`    impostorOption: ${JSON.stringify(b.impostorOption)}, // backfill (Pro — pass #3, review before shipping)`);
+    }
+    if (b.secondFlaw) {
+      insertions.push(`    secondFlaw: { line: ${b.secondFlaw.line}, label: ${JSON.stringify(b.secondFlaw.label)} }, // backfill (Pro — pass #3, review before shipping)`);
     }
     if (insertions.length === 0) continue;
     out = out.replace(idLineRe, m[1] + insertions.join(eol) + eol);
