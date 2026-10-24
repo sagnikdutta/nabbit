@@ -205,32 +205,43 @@ export default function V2Dashboard() {
             </div>
           </div>
           <nav className="v2-nav" aria-label="Main navigation">
-            {(['Home', 'Import Video', 'My Library', 'Practice', 'Recall', 'Progress'] as NavKey[]).map(key => (
-              <button
-                key={key}
-                className={activeNav === key ? 'active' : ''}
-                onClick={() => {
-                  setActiveNav(key);
-                  if (key !== 'Home') showToast(`${key} is coming to V2 soon.`);
-                }}
-              >
-                <span className="ico">{navIcon(key)}</span>
-                <span className="v2-label">{key}</span>
-              </button>
-            ))}
+            {(['Home', 'Import Video', 'My Library', 'Practice', 'Recall', 'Progress'] as NavKey[]).map(key => {
+              const href = navHref(key);
+              const isActive = activeNav === key;
+              return (
+                <a
+                  key={key}
+                  href={href}
+                  className={isActive ? 'active' : ''}
+                  aria-current={isActive ? 'page' : undefined}
+                  onClick={e => {
+                    if (href === '#') {
+                      e.preventDefault();
+                      setActiveNav(key);
+                      showToast(`${key} is coming to V2 soon.`);
+                    }
+                  }}
+                >
+                  <span className="ico">{navIcon(key)}</span>
+                  <span className="v2-label">{key}</span>
+                </a>
+              );
+            })}
             <div className="v2-nav-divider" />
             {(['Achievements', 'Settings'] as NavKey[]).map(key => (
-              <button
+              <a
                 key={key}
+                href="#"
                 className={activeNav === key ? 'active' : ''}
-                onClick={() => {
+                onClick={e => {
+                  e.preventDefault();
                   setActiveNav(key);
                   showToast(`${key} is coming to V2 soon.`);
                 }}
               >
                 <span className="ico">{navIcon(key)}</span>
                 <span className="v2-label">{key}</span>
-              </button>
+              </a>
             ))}
           </nav>
           <div className="v2-pro-card">
@@ -384,13 +395,18 @@ export default function V2Dashboard() {
                     </div>
                   </div>
                   <div className="v2-continue-actions">
-                    <button
+                    <a
                       className="v2-primary"
-                      disabled={continueDrillsDone >= 12}
-                      onClick={() => showToast('Resuming where you left off…')}
+                      href={continueDrillsDone >= 12 ? undefined : '/v2/challenge/react-state-batching'}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        textDecoration: 'none',
+                        opacity: continueDrillsDone >= 12 ? 0.6 : 1,
+                        pointerEvents: continueDrillsDone >= 12 ? 'none' : 'auto',
+                      }}
                     >
                       {continueDrillsDone >= 12 ? '✓ Completed' : 'Continue'}
-                    </button>
+                    </a>
                     <button
                       className="v2-secondary"
                       disabled={continueDrillsDone >= 12}
@@ -678,6 +694,14 @@ export default function V2Dashboard() {
       )}
     </div>
   );
+}
+
+function navHref(k: NavKey): string {
+  switch (k) {
+    case 'Home': return '/v2/';
+    case 'Practice': return '/v2/challenge/react-state-batching';
+    default: return '#';
+  }
 }
 
 function navIcon(k: NavKey): string {

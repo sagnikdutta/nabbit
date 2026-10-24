@@ -212,18 +212,8 @@ export default function V2AuthPage({
           </div>
         </div>
         <nav className="v2-auth-nav" aria-label="Primary">
-          <a href="/v1/#/" onClick={e => { e.preventDefault(); window.location.href = '/v1/#/'; }}>
-            Video Library
-          </a>
-          <a
-            href="/v1/#/challenge/react-state-batching"
-            onClick={e => {
-              e.preventDefault();
-              window.location.href = '/v1/#/challenge/react-state-batching';
-            }}
-          >
-            Bug Hunt Drill
-          </a>
+          <a href="/v2/">Video Library</a>
+          <a href="/v2/challenge/react-state-batching">Bug Hunt Drill</a>
         </nav>
         <div className="v2-auth-topbar-spacer" />
         <button

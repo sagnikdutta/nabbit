@@ -24,16 +24,19 @@ import { supabase } from './lib/supabase';
 
 const V2Dashboard = lazy(() => import('./v2/Dashboard'));
 const V2Auth = lazy(() => import('./v2/pages/Auth'));
+const V2Challenge = lazy(() => import('./v2/pages/Challenge'));
 
 type Choice =
   | { kind: 'v1' }
   | { kind: 'v2-dashboard' }
   | { kind: 'v2-auth' }
+  | { kind: 'v2-challenge' }
   | { kind: 'resolving' };
 
 function pickFromPath(pathname: string): Choice {
   if (pathname === '/v2' || pathname === '/v2/') return { kind: 'v2-dashboard' };
   if (pathname === '/v2/auth' || pathname === '/v2/auth/') return { kind: 'v2-auth' };
+  if (/^\/v2\/challenge\/[^/]+\/?$/.test(pathname)) return { kind: 'v2-challenge' };
   if (pathname === '/v1' || pathname.startsWith('/v1/')) return { kind: 'v1' };
   if (pathname.startsWith('/v2/')) return { kind: 'v1' };
   return { kind: 'resolving' };
@@ -84,6 +87,14 @@ export default function AppRouter() {
     return (
       <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading V2 auth…</div>}>
         <V2Auth initialMode={new URLSearchParams(window.location.search).get('mode') === 'signup' ? 'signup' : 'signin'} />
+      </Suspense>
+    );
+  }
+
+  if (choice.kind === 'v2-challenge') {
+    return (
+      <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading drill…</div>}>
+        <V2Challenge />
       </Suspense>
     );
   }
