@@ -13,13 +13,10 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background:
-    /* The hero illustration (bunny + floating cards) IS the background on
-       light mode: it fills the main area and the right-side form card
-       overlays its right third. Dark mode drops the image — it was
-       designed on a near-white canvas and would read as a bright patch. */
-    url('/nabbit-auth-bg.webp') center 60% / cover no-repeat,
-    linear-gradient(180deg, #fbfbff 0%, #f3f1ff 100%);
+  /* Soft lavender canvas in light mode; the hero illustration lives INSIDE
+     the hero column (see .v2-auth-illustration) so it never overlaps
+     headline / body / features. Dark mode just uses the token background. */
+  background: linear-gradient(180deg, #fbfbff 0%, #f3f1ff 100%);
 }
 .v2-auth-root[data-theme="dark"] {
   background: var(--bg);
@@ -95,13 +92,16 @@
 .v2-auth-main {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: 56px;
+  /* Hero gets a touch more room so the illustration sits comfortably
+     below the features; form card stays a predictable width so it reads
+     as a clean sheet on the right, matching the reference mockup. */
+  grid-template-columns: minmax(0, 1fr) 480px;
+  gap: 64px;
   max-width: 1320px;
   width: 100%;
   margin: 0 auto;
-  padding: 56px 48px;
-  align-items: center;
+  padding: 36px 56px 16px;
+  align-items: start;
 }
 
 /* ----- Left: hero ----- */
@@ -161,12 +161,14 @@
   line-height: 1.5;
 }
 
-/* "From video to mastery" caption sits over the background illustration,
-   just under the feature list. Hidden in dark mode since the illustration
-   isn't shown there. */
+/* "From video to mastery" caption and bunny illustration sit at the bottom
+   of the hero column, below the feature list. Both are hidden in dark
+   mode (the illustration is a near-white canvas) and on narrow viewports
+   (the hero stacks above the form card there and the extra height would
+   waste a lot of scroll). */
 .v2-auth-caption {
   display: inline-block;
-  margin-top: 12px;
+  margin-top: 20px;
   font-family: "Caveat", "Segoe Script", cursive;
   font-size: 22px;
   color: var(--purple);
@@ -174,11 +176,32 @@
   white-space: nowrap;
 }
 .v2-auth-caption::after {
-  content: " ↘";
+  content: " ⇘";
   margin-left: 4px;
   font-size: 24px;
 }
-.v2-auth-root[data-theme="dark"] .v2-auth-caption { display: none; }
+
+/* The source illustration (1536x960) has a lot of empty canvas above the
+   bunny and floating cards. Fixed-height frame + object-position bottom
+   crops it to the content portion so the page stays viewport-tall. */
+.v2-auth-illustration {
+  margin: 4px -32px 0 -24px;
+  width: calc(100% + 56px);
+  max-width: 680px;
+  height: 260px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.v2-auth-illustration img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 40% 68%;
+}
+
+.v2-auth-root[data-theme="dark"] .v2-auth-caption,
+.v2-auth-root[data-theme="dark"] .v2-auth-illustration { display: none; }
 
 /* ----- Right: card ----- */
 .v2-auth-card {
@@ -493,9 +516,9 @@
     gap: 36px;
     padding: 36px 32px;
   }
-  .v2-auth-root { background-image: none; }
   .v2-auth-hero h1 { font-size: 36px; }
-  .v2-auth-caption { display: none; }
+  .v2-auth-caption,
+  .v2-auth-illustration { display: none; }
 }
 @media (max-width: 600px) {
   .v2-auth-topbar { height: 60px; padding: 0 16px; gap: 12px; }

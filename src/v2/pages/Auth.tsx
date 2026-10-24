@@ -282,6 +282,9 @@ export default function V2AuthPage({
           </ul>
 
           <span className="v2-auth-caption">From video to mastery</span>
+          <div className="v2-auth-illustration" aria-hidden>
+            <img src="/nabbit-auth-bg.webp" alt="" />
+          </div>
         </section>
 
         <section className="v2-auth-card" aria-labelledby={`${formId}-title`}>
