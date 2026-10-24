@@ -38,13 +38,16 @@ export function availableFormats(challenge: Challenge) {
   if (challenge.availableFormats && challenge.availableFormats.length) {
     return challenge.availableFormats;
   }
-  const formats: ('spot-fix' | 'locate-then-fix' | 'rank-fixes' | 'blind-fix')[] = ['spot-fix'];
+  const formats: ('spot-fix' | 'locate-then-fix' | 'rank-fixes' | 'blind-fix' | 'diff-review')[] = ['spot-fix'];
   if (typeof challenge.buggyLineAnswer === 'number') formats.push('locate-then-fix');
   if (Array.isArray(challenge.rankedFixes) && challenge.rankedFixes.length === challenge.fixOptions.length) {
     formats.push('rank-fixes');
   }
   if (challenge.canonicalPatch && typeof challenge.canonicalPatch.newText === 'string') {
     formats.push('blind-fix');
+  }
+  if (challenge.reviewVerdict) {
+    formats.push('diff-review');
   }
   return formats;
 }
@@ -99,6 +102,24 @@ export function grade(challenge: Challenge, input: AttemptInput): GradeResult {
       if (sim >= 0.9) return { correct: true, outcome: 1, basePoints: 100 };
       if (sim >= 0.7) return { correct: false, outcome: 0.5, basePoints: 50 };
       return { correct: false, outcome: 0, basePoints: -40 };
+    }
+    case 'diff-review': {
+      // Verdict must match the canonical reviewVerdict. If 'request-changes',
+      // the user must also pick the right fix — a correct verdict with the
+      // wrong fix picks up partial credit (streak preserved).
+      if (!challenge.reviewVerdict) {
+        return { correct: false, outcome: 0, basePoints: -40 };
+      }
+      if (input.verdict !== challenge.reviewVerdict) {
+        return { correct: false, outcome: 0, basePoints: -40 };
+      }
+      if (input.verdict === 'request-changes') {
+        if (input.chosen === challenge.correctOption) {
+          return { correct: true, outcome: 1, basePoints: 100 };
+        }
+        return { correct: false, outcome: 0.5, basePoints: 50 };
+      }
+      return { correct: true, outcome: 1, basePoints: 100 };
     }
   }
 }

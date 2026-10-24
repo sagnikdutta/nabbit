@@ -35,8 +35,9 @@ export function normalizeChallenge(c: Challenge): Challenge {
   const hasSeedDist =
     Array.isArray(c.seedDistribution) && c.seedDistribution.length === c.fixOptions.length;
   const hasCanonicalPatch = Boolean(c.canonicalPatch && typeof c.canonicalPatch.newText === 'string');
+  const hasReviewVerdict = Boolean(c.reviewVerdict);
 
-  if (hasBuggyLineAnswer && hasSeedDist && hasCanonicalPatch) return c;
+  if (hasBuggyLineAnswer && hasSeedDist && hasCanonicalPatch && hasReviewVerdict) return c;
 
   return {
     ...c,
@@ -54,6 +55,11 @@ export function normalizeChallenge(c: Challenge): Challenge {
     canonicalPatch: hasCanonicalPatch
       ? c.canonicalPatch
       : { oldLines: c.buggyLines, newText: c.correctCode },
+    // Phase 8 v3 — every curated drill has a planted bug, so the canonical
+    // diff-review verdict defaults to 'request-changes'. Rare drills that
+    // deliberately include no bug (future "nothing's wrong" variants) can
+    // override to 'approve' or 'comment' in data.ts.
+    reviewVerdict: hasReviewVerdict ? c.reviewVerdict : 'request-changes',
   };
 }
 

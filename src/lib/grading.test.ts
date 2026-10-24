@@ -52,6 +52,11 @@ function canonicalInput(challenge: ReturnType<typeof normalizeChallenge>, format
     case 'blind-fix':
       if (!challenge.canonicalPatch) return null;
       return { format: 'blind-fix', patch: challenge.canonicalPatch.newText };
+    case 'diff-review':
+      if (!challenge.reviewVerdict) return null;
+      return challenge.reviewVerdict === 'request-changes'
+        ? { format: 'diff-review', verdict: 'request-changes', chosen: challenge.correctOption }
+        : { format: 'diff-review', verdict: challenge.reviewVerdict as 'approve' | 'comment' };
     default:
       return null;
   }
@@ -97,6 +102,20 @@ test('normalize fills blind-fix on every drill (canonicalPatch defaults to corre
     );
     assert.ok(typeof c.canonicalPatch?.newText === 'string');
   }
+});
+
+test('diff-review grading: verdict match → correct; wrong fix on request-changes → partial', () => {
+  const c = normalizeChallenge(CURATED_CHALLENGES[0]);
+  // Canonical verdict is 'request-changes' + chosen = correctOption → correct.
+  const good = grade(c, { format: 'diff-review', verdict: 'request-changes', chosen: c.correctOption });
+  assert.equal(good.correct, true);
+  // Right verdict, wrong fix → partial.
+  const wrongFix = (c.correctOption + 1) % c.fixOptions.length;
+  const partial = grade(c, { format: 'diff-review', verdict: 'request-changes', chosen: wrongFix });
+  assert.equal(partial.outcome, 0.5);
+  // Wrong verdict (approve on a drill with a planted bug) → wrong.
+  const wrong = grade(c, { format: 'diff-review', verdict: 'approve' });
+  assert.equal(wrong.outcome, 0);
 });
 
 test('blind-fix grading: ~exact patch → correct; slightly off → partial; nonsense → wrong', () => {

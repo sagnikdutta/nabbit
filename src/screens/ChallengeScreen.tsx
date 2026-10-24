@@ -14,6 +14,7 @@ import { SpotFixPanel } from '../components/formats/SpotFixPanel';
 import { LocateThenFixPanel } from '../components/formats/LocateThenFixPanel';
 import { RankFixesPanel } from '../components/formats/RankFixesPanel';
 import { BlindFixPanel } from '../components/formats/BlindFixPanel';
+import { DiffReviewPanel } from '../components/formats/DiffReviewPanel';
 import { ArrowLeft, CheckCircle, AlertTriangle, ShieldCheck, Target, X } from 'lucide-react';
 
 export interface AttemptResult {
@@ -77,6 +78,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
   const [selectedLine, setSelectedLine] = useState<number | null>(null);
   const [rankOrder, setRankOrder] = useState<number[]>(identityOrder);
   const [patch, setPatch] = useState<string>('');
+  const [verdict, setVerdict] = useState<'approve' | 'request-changes' | 'comment' | null>(null);
   const [confidence, setConfidence] = useState<Confidence>('sure');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [phase, setPhase] = useState<'answering' | 'revealed'>('answering');
@@ -92,6 +94,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
     setSelectedLine(null);
     setRankOrder(identityOrder);
     setPatch('');
+    setVerdict(null);
     setPhase('answering');
     setResult(null);
     setIsSubmitting(false);
@@ -112,6 +115,11 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
     if (format === 'locate-then-fix') return selectedLine !== null && selectedOption !== null;
     if (format === 'rank-fixes') return true; // any ordering is a valid attempt
     if (format === 'blind-fix') return patch.trim().length > 0;
+    if (format === 'diff-review') {
+      if (verdict === null) return false;
+      if (verdict === 'request-changes') return selectedOption !== null;
+      return true;
+    }
     return selectedOption !== null;
   })();
 
@@ -125,6 +133,10 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
       input = { format: 'rank-fixes', order: rankOrder };
     } else if (format === 'blind-fix') {
       input = { format: 'blind-fix', patch };
+    } else if (format === 'diff-review') {
+      input = verdict === 'request-changes'
+        ? { format: 'diff-review', verdict, chosen: selectedOption as number }
+        : { format: 'diff-review', verdict: verdict as 'approve' | 'comment' };
     } else {
       input = { format: 'spot-fix', chosen: selectedOption as number };
     }
@@ -162,17 +174,19 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
         setSelectedLine(null);
         setRankOrder(identityOrder);
         setPatch('');
+        setVerdict(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedOption, selectedLine, rankOrder, patch, challenge, phase, format, formats, canSubmit, identityOrder]);
+  }, [selectedOption, selectedLine, rankOrder, patch, verdict, challenge, phase, format, formats, canSubmit, identityOrder]);
 
   const handleRetry = () => {
     setSelectedOption(null);
     setSelectedLine(null);
     setRankOrder(identityOrder);
     setPatch('');
+    setVerdict(null);
     setResult(null);
     setPhase('answering');
     startedAt.current = Date.now();
@@ -185,6 +199,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
     setSelectedLine(null);
     setRankOrder(identityOrder);
     setPatch('');
+    setVerdict(null);
     startedAt.current = Date.now();
   };
 
@@ -398,6 +413,15 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
               challenge={challenge}
               patch={patch}
               onChangePatch={setPatch}
+              disabled={isSubmitting}
+            />
+          ) : format === 'diff-review' ? (
+            <DiffReviewPanel
+              challenge={challenge}
+              verdict={verdict}
+              selectedOption={selectedOption}
+              onChangeVerdict={setVerdict}
+              onChangeOption={setSelectedOption}
               disabled={isSubmitting}
             />
           ) : (

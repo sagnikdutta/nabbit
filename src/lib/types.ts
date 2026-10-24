@@ -77,7 +77,8 @@ export type AttemptInput =
   | { format: 'spot-fix'; chosen: number }
   | { format: 'locate-then-fix'; line: number; chosen: number }
   | { format: 'rank-fixes'; order: number[] }
-  | { format: 'blind-fix'; patch: string };
+  | { format: 'blind-fix'; patch: string }
+  | { format: 'diff-review'; verdict: 'approve' | 'request-changes' | 'comment'; chosen?: number };
 
 export interface ScoreBreakdown {
   basePoints: number;          // 100 full / 50 partial / -40 wrong
