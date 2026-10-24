@@ -49,6 +49,10 @@ export interface RevealScreenProps {
   outcome?: 0 | 0.5 | 1;
   scoreBreakdown?: ScoreBreakdown;
   comboAfter?: number;
+  // Phase 8 v2 — populated when the write went through SupabaseStore.
+  newRating?: number;
+  eloDelta?: number;
+  globalStreak?: number;
 }
 
 export const RevealScreen: React.FC<RevealScreenProps> = ({
@@ -70,8 +74,14 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
   outcome,
   scoreBreakdown,
   comboAfter,
+  newRating,
+  eloDelta,
+  globalStreak,
 }) => {
   const isPartial = outcome === 0.5;
+  const previousRating = typeof newRating === 'number' && typeof eloDelta === 'number'
+    ? newRating - eloDelta
+    : undefined;
   const [activeTab, setActiveTab] = useState<'diff' | 'explanation'>('diff');
 
   // N2 — bug-dare: share the exact drill via a server-readable `?dare=` link.
@@ -283,6 +293,34 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
             </div>
           )}
 
+          {/* Phase 8 v2 — per-concept Elo delta from SupabaseStore. */}
+          {typeof newRating === 'number' && typeof eloDelta === 'number' && previousRating !== undefined && (
+            <div
+              className="flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-sm)] bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-mono"
+              title={`Elo on "${challenge.concept}"`}
+            >
+              <TrendingUp
+                className={`w-3.5 h-3.5 ${eloDelta >= 0 ? 'text-[var(--color-good)]' : 'text-[var(--color-danger)]'}`}
+              />
+              <span className="text-[var(--color-muted)]">Rating:</span>
+              <strong className="text-[var(--color-text)]">
+                {previousRating} → {newRating}
+              </strong>
+              <span className={eloDelta >= 0 ? 'text-[var(--color-good)]' : 'text-[var(--color-danger)]'}>
+                {eloDelta >= 0 ? `↑+${eloDelta}` : `↓${eloDelta}`}
+              </span>
+            </div>
+          )}
+
+          {/* Phase 8 v2 — server-authoritative global streak (overrides per-concept recallItem.streak when present). */}
+          {typeof globalStreak === 'number' && globalStreak > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-[var(--radius-sm)] bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-mono">
+              <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+              <span className="text-[var(--color-text)] font-semibold">{globalStreak}</span>
+              <span className="text-[var(--color-muted)]">global streak</span>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-sm)] bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-mono">
             <Calendar className="w-3.5 h-3.5 text-[var(--color-accent)]" />
             <span className="text-[var(--color-muted)]">Next Recall:</span>
@@ -308,8 +346,10 @@ export const RevealScreen: React.FC<RevealScreenProps> = ({
         chosenLine={chosenLine}
         isCorrect={isCorrect}
         outcome={outcome}
-        streak={recallItem.streak}
+        streak={globalStreak ?? recallItem.streak}
         dareUrl={dareUrl}
+        newRating={newRating}
+        eloDelta={eloDelta}
       />
 
       {/* Answer Options Overview */}

@@ -15,6 +15,9 @@ export interface ShareGridProps {
   outcome: 0 | 0.5 | 1 | undefined;
   streak: number;
   dareUrl: string;
+  // Phase 8 v2 — real Elo delta on the Reveal upgrades Row 3 of the grid.
+  newRating?: number;
+  eloDelta?: number;
 }
 
 /**
@@ -33,6 +36,8 @@ export const ShareGrid: React.FC<ShareGridProps> = ({
   outcome,
   streak,
   dareUrl,
+  newRating,
+  eloDelta,
 }) => {
   const [state, setState] = useState<'idle' | 'copied' | 'shared'>('idle');
 
@@ -63,11 +68,16 @@ export const ShareGrid: React.FC<ShareGridProps> = ({
 
   const tiles: Glyph[] = indicesByPopularity.map(glyphFor);
   const streakRow = streak > 0 ? '🔥'.repeat(Math.min(streak, 10)) : '';
+  const hasElo = typeof newRating === 'number' && typeof eloDelta === 'number';
+  const eloRow = hasElo
+    ? `${eloDelta! >= 0 ? '↑' : '↓'}${eloDelta! >= 0 ? '+' : ''}${eloDelta} ${challenge.concept} ${newRating! - eloDelta!}→${newRating}`
+    : '';
 
   const shareText =
     `Nabbit · ${challenge.concept}\n` +
     `${tiles.join('')}\n` +
     (streakRow ? `${streakRow}\n` : '') +
+    (eloRow ? `${eloRow}\n` : '') +
     `Can you catch it? ${dareUrl}`;
 
   const handleShare = async () => {
@@ -95,10 +105,15 @@ export const ShareGrid: React.FC<ShareGridProps> = ({
           <p className="text-sm font-semibold text-[var(--color-text)]">Share this bug-dare</p>
           <div
             className="font-mono text-base leading-tight tracking-tight select-all"
-            aria-label={`Share grid: ${tiles.join(' ')}${streakRow ? ', ' + streak + ' streak' : ''}`}
+            aria-label={`Share grid: ${tiles.join(' ')}${streakRow ? ', ' + streak + ' streak' : ''}${eloRow ? ', ' + eloRow : ''}`}
           >
             <div>{tiles.join('')}</div>
             {streakRow && <div className="mt-0.5">{streakRow}</div>}
+            {eloRow && (
+              <div className={`mt-0.5 text-xs ${eloDelta! >= 0 ? 'text-[var(--color-good)]' : 'text-[var(--color-danger)]'}`}>
+                {eloRow}
+              </div>
+            )}
           </div>
           <p className="text-[11px] text-[var(--color-muted)]">
             Tiles ordered by what others picked · 🟩 your correct · 🟢 correct · 🟨 right line · 🟥 wrong

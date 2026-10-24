@@ -5,6 +5,7 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { TimeTravelBar } from '../components/TimeTravelBar';
+import { MasteryList } from '../components/MasteryList';
 import {
   Calendar,
   Flame,
@@ -33,6 +34,8 @@ export interface RecallDashboardScreenProps {
   onResetData: () => void;
   onLaunchDrill: (challengeId: string) => void;
   onGoToLibrary: () => void;
+  /** Phase 8 v2 — true for signed-in Supabase users; gates the MasteryList fetch. */
+  masteryEnabled?: boolean;
 }
 
 export const RecallDashboardScreen: React.FC<RecallDashboardScreenProps> = ({
@@ -48,6 +51,7 @@ export const RecallDashboardScreen: React.FC<RecallDashboardScreenProps> = ({
   onResetData,
   onLaunchDrill,
   onGoToLibrary,
+  masteryEnabled = false,
 }) => {
   const simulatedNow = Date.now() + offsetDays * 86400000;
 
@@ -77,6 +81,10 @@ export const RecallDashboardScreen: React.FC<RecallDashboardScreenProps> = ({
         onResetData={onResetData}
         dueCount={dueItems.length}
       />
+
+      {/* Phase 8 v2 — per-concept Elo. Reads from concept_elo (Supabase); for
+          anonymous/trial users shows a soft placeholder. */}
+      <MasteryList enabled={masteryEnabled} />
 
       {/* Header & Overview */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-[var(--color-border)] pb-4">

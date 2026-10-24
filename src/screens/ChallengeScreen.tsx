@@ -29,6 +29,11 @@ export interface AttemptResult {
     score: number;
   };
   comboAfter: number;
+  // Phase 8 v2 — Supabase-only (undefined in local/trial mode).
+  newRating?: number;
+  eloDelta?: number;
+  globalStreak?: number;
+  freezesRemaining?: number;
 }
 
 export interface ChallengeScreenProps {
@@ -191,6 +196,9 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
         allChallengesInVideo={allChallengesInVideo}
         scoreBreakdown={result.scoreBreakdown}
         comboAfter={result.comboAfter}
+        newRating={result.newRating}
+        eloDelta={result.eloDelta}
+        globalStreak={result.globalStreak}
         onNextChallenge={onNextChallenge}
         onRetryChallenge={handleRetry}
         onGoToRecall={onGoToRecall}

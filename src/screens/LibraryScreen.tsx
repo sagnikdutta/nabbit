@@ -3,6 +3,7 @@ import { Video, Challenge, RecallItem, RecallStats } from '../lib/types';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { YouTubeImportCard } from '../components/YouTubeImportCard';
+import { DailyDrillCard } from '../components/DailyDrillCard';
 import { Play, CheckCircle2, ArrowRight, ShieldCheck, BookOpen, Flame, Clock, Youtube } from 'lucide-react';
 
 export interface LibraryScreenProps {
@@ -93,6 +94,9 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       {/* Signed-in dashboard: what to do today, quiet stats, collapsed importer */}
       {isDashboard && (
         <>
+          {/* Phase 8 v2 — Daily Drill (hides when no row seeded for today). */}
+          <DailyDrillCard onOpenChallenge={onSelectChallenge} />
+
           <section className="space-y-4">
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--color-text)]">
               {userName ? `Welcome back, ${userName}` : 'Welcome back'}

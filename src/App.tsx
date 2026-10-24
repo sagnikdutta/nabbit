@@ -358,6 +358,11 @@ export default function App() {
       score: result.score,
       scoreBreakdown: result.scoreBreakdown,
       comboAfter: result.comboAfter,
+      // Phase 8 v2 — populated by SupabaseStore; undefined on the local path.
+      newRating: result.newRating,
+      eloDelta: result.eloDelta,
+      globalStreak: result.globalStreak,
+      freezesRemaining: result.freezesRemaining,
     };
   };
 
@@ -543,6 +548,7 @@ export default function App() {
             onResetData={handleResetData}
             onLaunchDrill={handleSelectChallenge}
             onGoToLibrary={() => handleNavigate('library')}
+            masteryEnabled={Boolean(currentUser && currentUser.provider === 'supabase')}
           />
         )}
       </main>
