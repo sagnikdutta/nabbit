@@ -5,6 +5,7 @@ import { Card } from '../components/Card';
 import { YouTubeImportCard } from '../components/YouTubeImportCard';
 import { DailyDrillCard } from '../components/DailyDrillCard';
 import { BossDrillCard } from '../components/BossDrillCard';
+import { SeasonBanner } from '../components/SeasonBanner';
 import { Play, CheckCircle2, ArrowRight, ShieldCheck, BookOpen, Flame, Clock, Youtube, Trophy } from 'lucide-react';
 
 export interface LibraryScreenProps {
@@ -19,7 +20,7 @@ export interface LibraryScreenProps {
   onGoToLeaderboard?: () => void;
   onSignUp?: () => void;
   onSelectVideo: (videoId: string) => void;
-  onSelectChallenge: (challengeId: string) => void;
+  onSelectChallenge: (challengeId: string, opts?: { fromBoss?: boolean }) => void;
   onImportYouTube: (url: string, topicHint?: string) => Promise<{ video: Video; challenges: Challenge[]; source: string }>;
   onRefreshData?: () => Promise<void>;
   // Phase 8 v2 — gates Boss-drill + leaderboard surfaces (visible but locked when false).
@@ -109,6 +110,10 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             allChallenges={challenges}
             onLaunchDrill={onSelectChallenge}
           />
+
+          {/* Phase 8 v3 — season progress banner (Pro only; hidden when no
+              active season exists). Clicking jumps to the leaderboard. */}
+          <SeasonBanner isPro={isPro} onOpenLeaderboard={onGoToLeaderboard} />
 
           {/* Phase 8 v2 — jump to the Pro leaderboard page. */}
           {onGoToLeaderboard && (

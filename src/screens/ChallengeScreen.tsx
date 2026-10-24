@@ -16,7 +16,8 @@ import { RankFixesPanel } from '../components/formats/RankFixesPanel';
 import { BlindFixPanel } from '../components/formats/BlindFixPanel';
 import { DiffReviewPanel } from '../components/formats/DiffReviewPanel';
 import { ImpostorPanel } from '../components/formats/ImpostorPanel';
-import { ArrowLeft, CheckCircle, AlertTriangle, ShieldCheck, Target, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle, AlertTriangle, ShieldCheck, Target, X, Siren } from 'lucide-react';
+import { getIncidentOptOut, setIncidentOptOut, shouldShowIncident } from '../lib/incident-skin';
 
 export interface AttemptResult {
   correct: boolean;
@@ -56,6 +57,10 @@ export interface ChallengeScreenProps {
   onGoToRecall: () => void;
   /** Phase 8 v3 — gates Impostor + Red-herring formats. Default false. */
   isPro?: boolean;
+  /** Phase 8 v3 — user's current per-concept Elo for this challenge.concept. */
+  userConceptRating?: number;
+  /** Phase 8 v3 — attempt is part of this week's Boss drill (sets is_boss on apply_attempt). */
+  isBossAttempt?: boolean;
 }
 
 export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
@@ -71,8 +76,12 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
   onNextChallenge,
   onGoToRecall,
   isPro = false,
+  userConceptRating,
+  isBossAttempt = false,
 }) => {
   const [proTease, setProTease] = useState<ChallengeFormat | null>(null);
+  const [optedOutIncident, setOptedOutIncident] = useState<boolean>(getIncidentOptOut);
+  const incidentOn = shouldShowIncident(challenge.difficulty, userConceptRating, optedOutIncident);
   const formats = availableFormats(challenge);
   const identityOrder = React.useMemo(
     () => challenge.fixOptions.map((_, i) => i),
@@ -250,7 +259,36 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
   const locateMode = format === 'locate-then-fix' || format === 'red-herring';
 
   return (
-    <div className="space-y-6 pb-16">
+    <div className="space-y-6 pb-16" data-incident={incidentOn ? 'true' : undefined}>
+      {/* Phase 8 v3 — prod-incident framing on hard drills.
+          "Postmortem" reframe: this shipped; here's what the dashboard looked like. */}
+      {incidentOn && (
+        <section className="rounded-[var(--radius)] border border-[var(--color-accent-border)] bg-[var(--color-accent-weak)] px-4 py-3 flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="w-7 h-7 rounded-[var(--radius-sm)] bg-[var(--color-accent)] text-[var(--color-accent-ink)] flex items-center justify-center shrink-0 incident-badge">
+              <Siren className="w-3.5 h-3.5" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm font-semibold text-[var(--color-text)]">
+                Postmortem · this shipped. 03:14 UTC.
+              </p>
+              <p className="text-[11px] text-[var(--color-muted)] leading-relaxed mt-0.5">
+                You're a reviewer walking the dashboard. The planted flaw escaped review once —
+                catch it now before the next one does.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => { setIncidentOptOut(true); setOptedOutIncident(true); }}
+            className="shrink-0 text-[11px] font-medium text-[var(--color-muted)] hover:text-[var(--color-text)] cursor-pointer whitespace-nowrap"
+            title="Turn off incident framing for all drills"
+          >
+            Switch off
+          </button>
+        </section>
+      )}
+
       {/* "What is this?" context strip for first-time / cold-dare arrivals */}
       {showIntro && (
         <div className="rounded-[var(--radius)] border border-[var(--color-accent-border)] bg-[var(--color-accent-weak)] px-4 py-3 flex items-start gap-3">

@@ -136,7 +136,7 @@ export class SupabaseStore {
   async recordAttempt(
     challenge: Challenge,
     input: AttemptInput,
-    meta: { confidence: Confidence; timeMs: number; combo: number },
+    meta: { confidence: Confidence; timeMs: number; combo: number; isBoss?: boolean },
   ): Promise<SupabaseAttemptResult> {
     const sb = requireClient();
     const g = grade(challenge, input);
@@ -165,6 +165,8 @@ export class SupabaseStore {
       score: breakdown.score,
       combo_at_time: comboAfter,
       base_rating: baseRating(challenge.difficulty),
+      is_boss: meta.isBoss === true,
+      impostor_graded: input.format === 'impostor' || input.format === 'red-herring',
       input,
     };
 

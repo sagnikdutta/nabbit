@@ -9,7 +9,8 @@ export interface BossDrillCardProps {
   isPro: boolean;
   /** All drills the client knows about; the RPC picks 5 from the ids we send. */
   allChallenges: Challenge[];
-  onLaunchDrill: (challengeId: string) => void;
+  /** Phase 8 v3 — second arg carries boss intent so apply_attempt gets is_boss=true. */
+  onLaunchDrill: (challengeId: string, opts?: { fromBoss?: boolean }) => void;
 }
 
 interface BossRow {
@@ -124,7 +125,7 @@ export const BossDrillCard: React.FC<BossDrillCardProps> = ({ isPro, allChalleng
         variant="primary"
         size="md"
         className="w-full sm:w-auto justify-center shrink-0"
-        onClick={() => first && onLaunchDrill(first)}
+        onClick={() => first && onLaunchDrill(first, { fromBoss: true })}
         icon={<Flame className="w-4 h-4" />}
       >
         Start Boss drill

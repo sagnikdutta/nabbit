@@ -26,6 +26,8 @@ export interface AttemptMeta {
   timeMs: number;
   /** Pre-attempt combo state (0 for the first attempt in a session, N after N consecutive full-corrects). */
   combo: number;
+  /** Phase 8 v3 — attempt is part of this week's Boss drill (Supabase stamps attempts.is_boss). */
+  isBoss?: boolean;
 }
 
 export interface AttemptResult {

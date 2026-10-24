@@ -139,6 +139,35 @@ export default function App() {
     return () => { alive = false; };
   }, [currentUser?.id, currentUser?.provider]);
 
+  // Phase 8 v3 — per-concept Elo map for incident-skin trigger (user rating
+  // ≥ 1500 on this concept → incident framing on). Loaded once per session.
+  const [conceptEloMap, setConceptEloMap] = useState<Record<string, number>>({});
+  useEffect(() => {
+    let alive = true;
+    if (!currentUser || currentUser.provider !== 'supabase' || !supabase) {
+      setConceptEloMap({});
+      return;
+    }
+    import('./lib/supabase-store').then(({ supabaseStore }) =>
+      supabaseStore.getConceptElo()
+        .then(rows => {
+          if (!alive) return;
+          const m: Record<string, number> = {};
+          for (const r of rows) m[r.concept] = r.rating;
+          setConceptEloMap(m);
+        })
+        .catch(() => { if (alive) setConceptEloMap({}); })
+    );
+    return () => { alive = false; };
+  }, [currentUser?.id, currentUser?.provider, stats.totalSolved]);
+
+  // Phase 8 v3 — boss-intent flag. Set by BossDrillCard, cleared when the
+  // user leaves the challenge or switches to a non-boss drill mid-flow.
+  const [isBossAttempt, setIsBossAttempt] = useState(false);
+  useEffect(() => {
+    if (activeChallengeId == null) setIsBossAttempt(false);
+  }, [activeChallengeId]);
+
   // Subscribe to auth changes
   useEffect(() => {
     return api.onAuthChange(user => {
@@ -333,7 +362,8 @@ export default function App() {
     }
   };
 
-  const handleSelectChallenge = (challengeId: string) => {
+  const handleSelectChallenge = (challengeId: string, opts?: { fromBoss?: boolean }) => {
+    setIsBossAttempt(Boolean(opts?.fromBoss));
     go('challenge', challengeId);
   };
 
@@ -354,7 +384,7 @@ export default function App() {
       return new Promise<never>(() => {});
     }
 
-    const result = await api.submitAttempt(activeChallengeId, input, { ...meta, combo });
+    const result = await api.submitAttempt(activeChallengeId, input, { ...meta, combo, isBoss: isBossAttempt });
 
     // Mirror the authoritative combo state after the server-side-ready grading.
     setCombo(result.comboAfter);
@@ -549,6 +579,8 @@ export default function App() {
             onNextChallenge={handleNextChallenge}
             onGoToRecall={() => handleNavigate('recall')}
             isPro={isPro}
+            userConceptRating={conceptEloMap[currentChallenge.concept]}
+            isBossAttempt={isBossAttempt}
           />
         )}
 

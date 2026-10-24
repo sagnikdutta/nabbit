@@ -142,3 +142,54 @@
   --shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
+
+/* ==========================================================================
+   Phase 8 v3 — Prod-incident skin.
+   Scoped override applied to the challenge-screen root when the drill is
+   difficulty Advanced OR the user's Elo on this concept is >= 1500, unless
+   the user has opted out via the profile toggle. Darker canvas, incident-
+   red accent, a subtle pulse on the "LIVE" badge up top.
+   ========================================================================== */
+[data-incident="true"] {
+  --color-bg: #0b0f1a;
+  --color-surface: #121826;
+  --color-surface-subtle: #1a2235;
+  --color-border: #1f2937;
+  --color-border-subtle: #1a2235;
+  --color-text: #e5e7eb;
+  --color-text-subtle: #cbd5e1;
+  --color-muted: #94a3b8;
+
+  --color-accent: #f87171;
+  --color-accent-hover: #ef4444;
+  --color-accent-weak: #2b1618;
+  --color-accent-ink: #ffffff;
+  --color-accent-border: #7f1d1d;
+
+  --color-good: #10b981;
+  --color-good-weak: #0f2b1f;
+  --color-good-border: #065f46;
+  --color-good-ink: #a7f3d0;
+
+  --color-danger: #ef4444;
+  --color-danger-weak: #2a1313;
+  --color-danger-border: #7f1d1d;
+  --color-danger-ink: #fecaca;
+
+  --color-warning: #f59e0b;
+  --color-warning-weak: #2a1f06;
+  --color-warning-border: #78350f;
+  --color-warning-ink: #fde68a;
+
+  --code-bg: #060a14;
+  --code-surface: #0b1222;
+  --code-text: #e5e7eb;
+}
+
+[data-incident="true"] .incident-badge {
+  animation: nabbitIncidentPulse 1.6s ease-in-out infinite;
+}
+@keyframes nabbitIncidentPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
