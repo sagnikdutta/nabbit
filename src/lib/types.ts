@@ -78,7 +78,12 @@ export type AttemptInput =
   | { format: 'locate-then-fix'; line: number; chosen: number }
   | { format: 'rank-fixes'; order: number[] }
   | { format: 'blind-fix'; patch: string }
-  | { format: 'diff-review'; verdict: 'approve' | 'request-changes' | 'comment'; chosen?: number };
+  | { format: 'diff-review'; verdict: 'approve' | 'request-changes' | 'comment'; chosen?: number }
+  | { format: 'impostor'; chosen: number }                       // Pro
+  | { format: 'red-herring'; chosenLine: number; chosen: number }; // Pro
+
+/** Pro-only formats. Non-Pro users see them with a lock badge. */
+export const PRO_FORMATS: ReadonlyArray<ChallengeFormat> = ['impostor', 'red-herring'];
 
 export interface ScoreBreakdown {
   basePoints: number;          // 100 full / 50 partial / -40 wrong

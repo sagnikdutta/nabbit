@@ -9,6 +9,13 @@ export interface LocateThenFixPanelProps {
   selectedOption: number | null;
   onChangeOption: (idx: number) => void;
   disabled?: boolean;
+  /**
+   * Phase 8 v3 — Red-herring (Pro) mode. When true, the preamble warns about
+   * a planted decoy at challenge.secondFlaw.line. Grading uses the red-herring
+   * case in grading.ts (same correctness rules; the decoy only exists in the
+   * reviewer's mind).
+   */
+  distractorMode?: boolean;
 }
 
 /**
@@ -22,11 +29,22 @@ export const LocateThenFixPanel: React.FC<LocateThenFixPanelProps> = ({
   selectedOption,
   onChangeOption,
   disabled,
+  distractorMode = false,
 }) => {
   const lineLocked = selectedLine !== null;
 
   return (
     <div className="space-y-3 pt-2">
+      {distractorMode && (
+        <div className="rounded-[var(--radius-sm)] border border-[var(--color-warning-border)] bg-[var(--color-warning-weak)] px-3 py-2 flex items-start gap-2 text-xs">
+          <Crosshair className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--color-warning-ink)]" />
+          <span className="text-[var(--color-warning-ink)]">
+            <strong>Red herring:</strong> one of the suspicious-looking lines is a decoy. Only the
+            true bug line counts; a wrong line is a full miss (no partial credit).
+          </span>
+        </div>
+      )}
+
       <div
         className={`rounded-[var(--radius-sm)] border px-3 py-2 flex items-center gap-2 text-xs transition-colors ${
           lineLocked

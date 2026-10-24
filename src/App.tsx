@@ -548,6 +548,7 @@ export default function App() {
             onSelectAnotherChallenge={handleSelectChallenge}
             onNextChallenge={handleNextChallenge}
             onGoToRecall={() => handleNavigate('recall')}
+            isPro={isPro}
           />
         )}
 

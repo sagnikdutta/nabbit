@@ -38,7 +38,7 @@ export function availableFormats(challenge: Challenge) {
   if (challenge.availableFormats && challenge.availableFormats.length) {
     return challenge.availableFormats;
   }
-  const formats: ('spot-fix' | 'locate-then-fix' | 'rank-fixes' | 'blind-fix' | 'diff-review')[] = ['spot-fix'];
+  const formats: ('spot-fix' | 'locate-then-fix' | 'rank-fixes' | 'blind-fix' | 'diff-review' | 'impostor' | 'red-herring')[] = ['spot-fix'];
   if (typeof challenge.buggyLineAnswer === 'number') formats.push('locate-then-fix');
   if (Array.isArray(challenge.rankedFixes) && challenge.rankedFixes.length === challenge.fixOptions.length) {
     formats.push('rank-fixes');
@@ -48,6 +48,14 @@ export function availableFormats(challenge: Challenge) {
   }
   if (challenge.reviewVerdict) {
     formats.push('diff-review');
+  }
+  // Pro formats — only light up when their field is present (Gemini pass #3
+  // writes these drill-by-drill, each row human-reviewed per the plan).
+  if (typeof challenge.impostorOption === 'string' && challenge.impostorOption.length > 0) {
+    formats.push('impostor');
+  }
+  if (typeof challenge.buggyLineAnswer === 'number' && challenge.secondFlaw) {
+    formats.push('red-herring');
   }
   return formats;
 }
@@ -120,6 +128,37 @@ export function grade(challenge: Challenge, input: AttemptInput): GradeResult {
         return { correct: false, outcome: 0.5, basePoints: 50 };
       }
       return { correct: true, outcome: 1, basePoints: 100 };
+    }
+    case 'impostor': {
+      // 5 options: the usual 4 + challenge.impostorOption. The impostor LOOKS
+      // right but is subtly wrong — correct answer is still correctOption.
+      // The impostor sits at index == fixOptions.length (appended by the panel).
+      if (!challenge.impostorOption) {
+        return { correct: false, outcome: 0, basePoints: -40 };
+      }
+      const correct = input.chosen === challenge.correctOption;
+      return {
+        correct,
+        outcome: correct ? 1 : 0,
+        basePoints: correct ? 100 : -40,
+      };
+    }
+    case 'red-herring': {
+      // Locate-then-fix variant with a decoy "bug" at challenge.secondFlaw.line.
+      // Picking the decoy line counts as fully wrong (not partial) — the whole
+      // point of the format is distinguishing real from fake.
+      if (typeof challenge.buggyLineAnswer !== 'number' || !challenge.secondFlaw) {
+        return { correct: false, outcome: 0, basePoints: -40 };
+      }
+      const lineRight = input.chosenLine === challenge.buggyLineAnswer;
+      const fixRight = input.chosen === challenge.correctOption;
+      if (lineRight && fixRight) {
+        return { correct: true, outcome: 1, basePoints: 100 };
+      }
+      if (lineRight) {
+        return { correct: false, outcome: 0.5, basePoints: 50 };
+      }
+      return { correct: false, outcome: 0, basePoints: -40 };
     }
   }
 }

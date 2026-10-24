@@ -72,6 +72,13 @@ export const CURATED_CHALLENGES: Challenge[] = [
     rankedFixes: [3, 2, 1, 0],
     // Phase 8 v1b — Autopsy seed distribution until real attempts land.
     seedDistribution: [0.42, 0.18, 0.22, 0.18],
+    // Phase 8 v3 — Impostor (Pro). Appended as option E; looks functional
+    // because it uses an arrow callback, but the body ignores `prev` and
+    // closes over the stale `count` — reproduces the exact batching bug.
+    impostorOption: 'Replace with setCount(() => count + 1); setCount(() => count + 1); — a callback form that avoids the stale snapshot',
+    // Phase 8 v3 — Red-herring (Pro). Line 2 (useState initializer) is a
+    // plausible-looking decoy for new React devs who suspect default values.
+    secondFlaw: { line: 2, label: 'useState initializer' },
     buggyCode: `function Counter() {
   const [count, setCount] = useState(0);
 

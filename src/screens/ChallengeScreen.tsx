@@ -15,6 +15,7 @@ import { LocateThenFixPanel } from '../components/formats/LocateThenFixPanel';
 import { RankFixesPanel } from '../components/formats/RankFixesPanel';
 import { BlindFixPanel } from '../components/formats/BlindFixPanel';
 import { DiffReviewPanel } from '../components/formats/DiffReviewPanel';
+import { ImpostorPanel } from '../components/formats/ImpostorPanel';
 import { ArrowLeft, CheckCircle, AlertTriangle, ShieldCheck, Target, X } from 'lucide-react';
 
 export interface AttemptResult {
@@ -53,6 +54,8 @@ export interface ChallengeScreenProps {
   onSelectAnotherChallenge: (challengeId: string) => void;
   onNextChallenge: () => void;
   onGoToRecall: () => void;
+  /** Phase 8 v3 — gates Impostor + Red-herring formats. Default false. */
+  isPro?: boolean;
 }
 
 export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
@@ -67,7 +70,9 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
   onSelectAnotherChallenge,
   onNextChallenge,
   onGoToRecall,
+  isPro = false,
 }) => {
+  const [proTease, setProTease] = useState<ChallengeFormat | null>(null);
   const formats = availableFormats(challenge);
   const identityOrder = React.useMemo(
     () => challenge.fixOptions.map((_, i) => i),
@@ -112,7 +117,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
 
   // Format-aware readiness check — gates the submit button.
   const canSubmit = (() => {
-    if (format === 'locate-then-fix') return selectedLine !== null && selectedOption !== null;
+    if (format === 'locate-then-fix' || format === 'red-herring') return selectedLine !== null && selectedOption !== null;
     if (format === 'rank-fixes') return true; // any ordering is a valid attempt
     if (format === 'blind-fix') return patch.trim().length > 0;
     if (format === 'diff-review') {
@@ -129,6 +134,8 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
     let input: AttemptInput;
     if (format === 'locate-then-fix') {
       input = { format: 'locate-then-fix', line: selectedLine as number, chosen: selectedOption as number };
+    } else if (format === 'red-herring') {
+      input = { format: 'red-herring', chosenLine: selectedLine as number, chosen: selectedOption as number };
     } else if (format === 'rank-fixes') {
       input = { format: 'rank-fixes', order: rankOrder };
     } else if (format === 'blind-fix') {
@@ -137,6 +144,8 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
       input = verdict === 'request-changes'
         ? { format: 'diff-review', verdict, chosen: selectedOption as number }
         : { format: 'diff-review', verdict: verdict as 'approve' | 'comment' };
+    } else if (format === 'impostor') {
+      input = { format: 'impostor', chosen: selectedOption as number };
     } else {
       input = { format: 'spot-fix', chosen: selectedOption as number };
     }
@@ -159,11 +168,14 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
       const inField = e.target instanceof HTMLElement
         && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT');
       if (inField) return;
-      if (['1', '2', '3', '4'].includes(e.key)) {
+      if (['1', '2', '3', '4', '5'].includes(e.key)) {
         if (format === 'rank-fixes' || format === 'blind-fix') return;
         const idx = parseInt(e.key, 10) - 1;
-        if (idx >= challenge.fixOptions.length) return;
-        if (format === 'locate-then-fix' && selectedLine === null) return;
+        const upperBound = format === 'impostor'
+          ? challenge.fixOptions.length + 1
+          : challenge.fixOptions.length;
+        if (idx >= upperBound) return;
+        if ((format === 'locate-then-fix' || format === 'red-herring') && selectedLine === null) return;
         setSelectedOption(idx);
       } else if (e.key === 'Enter' && canSubmit) {
         handleSubmit();
@@ -235,7 +247,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
     );
   }
 
-  const locateMode = format === 'locate-then-fix';
+  const locateMode = format === 'locate-then-fix' || format === 'red-herring';
 
   return (
     <div className="space-y-6 pb-16">
@@ -357,7 +369,36 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
         {/* Right: Code & Fix Options */}
         <div className="lg:col-span-7 min-w-0 space-y-5">
           {formats.length > 1 && (
-            <FormatChooser available={formats} active={format} onChange={handleFormatChange} />
+            <FormatChooser
+              available={formats}
+              active={format}
+              onChange={handleFormatChange}
+              isPro={isPro}
+              onLockedClick={fmt => setProTease(fmt)}
+            />
+          )}
+
+          {proTease && (
+            <div className="rounded-[var(--radius)] border border-[var(--color-warning-border)] bg-[var(--color-warning-weak)] px-4 py-3 flex items-start justify-between gap-3 text-xs">
+              <div className="min-w-0">
+                <p className="font-semibold text-[var(--color-warning-ink)]">
+                  {proTease === 'impostor' ? 'Impostor rounds are Pro' : 'Red-herring drills are Pro'}
+                </p>
+                <p className="text-[var(--color-warning-ink)]/90 mt-0.5">
+                  {proTease === 'impostor'
+                    ? 'One extra fix option looks right but is subtly wrong. Trains close-reading of plausible-sounding fixes.'
+                    : 'A second decoy "bug" is planted at a different line. The real bug stays graded as locate-then-fix.'}{' '}
+                  Pro is coming soon.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProTease(null)}
+                className="shrink-0 text-[var(--color-warning-ink)]/70 hover:text-[var(--color-warning-ink)] text-xs font-medium cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
           )}
 
           <div className="space-y-1.5">
@@ -393,13 +434,14 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
           />
 
           {/* Format-specific input panel */}
-          {format === 'locate-then-fix' ? (
+          {format === 'locate-then-fix' || format === 'red-herring' ? (
             <LocateThenFixPanel
               challenge={challenge}
               selectedLine={selectedLine}
               selectedOption={selectedOption}
               onChangeOption={setSelectedOption}
               disabled={isSubmitting}
+              distractorMode={format === 'red-herring'}
             />
           ) : format === 'rank-fixes' ? (
             <RankFixesPanel
@@ -421,6 +463,13 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
               verdict={verdict}
               selectedOption={selectedOption}
               onChangeVerdict={setVerdict}
+              onChangeOption={setSelectedOption}
+              disabled={isSubmitting}
+            />
+          ) : format === 'impostor' ? (
+            <ImpostorPanel
+              challenge={challenge}
+              selectedOption={selectedOption}
               onChangeOption={setSelectedOption}
               disabled={isSubmitting}
             />

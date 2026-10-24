@@ -57,6 +57,12 @@ function canonicalInput(challenge: ReturnType<typeof normalizeChallenge>, format
       return challenge.reviewVerdict === 'request-changes'
         ? { format: 'diff-review', verdict: 'request-changes', chosen: challenge.correctOption }
         : { format: 'diff-review', verdict: challenge.reviewVerdict as 'approve' | 'comment' };
+    case 'impostor':
+      // Correct answer is still correctOption (the impostor at index == fixOptions.length is the decoy).
+      return { format: 'impostor', chosen: challenge.correctOption };
+    case 'red-herring':
+      if (typeof challenge.buggyLineAnswer !== 'number') return null;
+      return { format: 'red-herring', chosenLine: challenge.buggyLineAnswer, chosen: challenge.correctOption };
     default:
       return null;
   }
