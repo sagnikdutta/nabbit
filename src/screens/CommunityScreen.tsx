@@ -73,8 +73,12 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ signedIn, onBa
       const { data } = await supabase.rpc('upvote_community_draft', { draft_id: id });
       const row = Array.isArray(data) ? data[0] : data;
       if (row) {
+        // Hotfix 0010 renamed the return columns with an _out suffix to
+        // dodge a PL/pgSQL variable/column collision; tolerate both shapes.
+        const upvotes = Number((row as any).upvotes_out ?? (row as any).upvotes ?? 0);
+        const status = ((row as any).status_out ?? (row as any).status) as DraftRow['status'];
         setRows(prev => prev
-          ? prev.map(r => r.id === id ? { ...r, upvotes: Number(row.upvotes), status: row.status as DraftRow['status'] } : r)
+          ? prev.map(r => r.id === id ? { ...r, upvotes, status } : r)
           : prev);
       }
     } finally {

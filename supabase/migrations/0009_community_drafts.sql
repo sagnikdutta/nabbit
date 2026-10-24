@@ -95,9 +95,12 @@ grant execute on function public.submit_community_draft(jsonb) to authenticated;
 --   avg concept_elo ≥ 1300 → 5 upvotes
 --   else                   → 10 upvotes
 ------------------------------------------------------------
+-- Return columns are renamed with an _out suffix so PL/pgSQL's implicit OUT
+-- parameters don't collide with the table column of the same name. Clients
+-- read `upvotes_out` + `status_out`.
 drop function if exists public.upvote_community_draft(uuid);
 create function public.upvote_community_draft(draft_id uuid)
-returns table (upvotes int, status text)
+returns table (upvotes_out int, status_out text)
 language plpgsql
 security definer
 set search_path = public
@@ -112,9 +115,9 @@ declare
 begin
   if uid is null then raise exception 'not authenticated'; end if;
 
-  select author_id, status into v_author, v_status
-    from public.community_drafts
-   where id = upvote_community_draft.draft_id;
+  select author_id, cd.status into v_author, v_status
+    from public.community_drafts cd
+   where cd.id = upvote_community_draft.draft_id;
   if v_author is null then raise exception 'draft not found'; end if;
 
   -- Idempotent per voter; a repeat upvote is a no-op (not an error).
