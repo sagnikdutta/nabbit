@@ -15,6 +15,10 @@
 > **Status (24 Oct):** **Phase 8 v2 shipped locally** across commits `f2835e9` (v2a — migrations 0004–0008 + RPCs) · `d5537ec` (v2b — SupabaseStore + routing + merge flow) · `65a454f` (v2c — Daily Drill card, mastery list, Elo delta chip on Reveal, ShareGrid Elo row) · `9f41823` (v2d — BlindFixPanel + Levenshtein, Pro-gated Boss drill card + Seasons leaderboard) · v2e (Edge Function + Gemini pass #2 + build-plan). Browser-verified end-to-end against the live nabbit Supabase project: `apply_attempt` returned `newRating: 1223` / `eloDelta: +11` / `globalStreak: 3`; data landed in `attempts`, `concept_elo`, `streaks`, `recall_items`; Reveal shows Rating chip + ShareGrid Elo row; Boss + Leaderboard surfaces render the lock badge for the current non-Pro `tester@example.com`; Blind-fix on `effect-missing-cleanup` scored `+353`. **64 tests pass**. Pulled v3's Boss-drill and Seasons UI shells forward (the gate itself is what proves the Pro surface). **v3 remains** — Diff-review, Impostor + Red-herring (Pro), prod-incident skin, community drafts (migration 0009 + queue + auto-publish), Gemini pass #3 (human-reviewed Impostor/Red-herring content).
 >
 > **Status (24 Oct, later):** **Phase 8 v3 shipped locally** across commits `f02732d` (v3a — migration 0009 + apply_attempt is_boss/impostor flags) · `798df82` (v3b — DiffReviewPanel) · `32605db` (v3c — Impostor + Red-herring Pro-gated) · `072644e` (v3d — prod-incident skin + Boss completion + Season banner) · `1c3f908` (v3e — community drafts screen + submit + upvote) · v3f (Gemini pass #3 + build-plan). Every curated drill now plays Spot-fix + Locate-then-fix + Rank-fixes + Blind-fix + Diff-review; `react-state-batching` additionally plays Impostor + Red-herring (hand-seeded; backfill script now authors them for the rest via `npm run backfill -- --gemini`). Pro surfaces (Boss drill card, Season banner, Season leaderboard page, Impostor + Red-herring format pills) render the lock + CTA for non-Pro and the live content for Pro. Prod-incident skin lights up on Advanced drills or on concepts the user has crossed 1500 Elo on, with a one-click Switch off. Community drafts live at `#/community` with submit + upvote + Elo-scaled auto-publish. **79 tests pass**; typecheck clean. **Phase 8 complete** — further polish items noted per-bullet below.
+>
+> **Status (24 Oct, hotfix):** Migrations 0009 **and** 0010 applied in the live Supabase project. Migration `0010_fix_upvote_ambiguity.sql` recreates `upvote_community_draft` with return columns renamed `upvotes_out` / `status_out` to dodge a PL/pgSQL variable/column clash on `status` found when applying 0009. Verified against the live DB: `apply_attempt` with `isBoss: true` + `format: 'impostor'` stamped `attempts.is_boss = true` + `attempts.impostor_graded = true`, scored +165, Elo delta +12 (1200 → 1212); `submit_community_draft` returned a draft id end-to-end. Upvote end-to-end re-verification deferred (my browser script got cut by a page navigation — the client already tolerates both pre- and post-0010 return shapes).
+>
+> **Status (24 Oct, UI debt):** The signed-in dashboard order on `LibraryScreen` is wrong after Phase 8 v2/v3. Boss drill card, Season leaderboard tile and Community drafts tile sit *above* "Welcome back, user" and read as an afterthought — tall, text-only rows. "Import from YouTube" shrank to a sub-button in the same area and is almost invisible. A dashboard **UI redesign** is the next thing to do before any more feature work — logged as **B9** below.
 
 ---
 
@@ -123,6 +127,30 @@ The judgment format generalizes to **"one artifact, one planted flaw, pick the f
 
 ### B8 — Auto-generate from any video  *(Acquisition + Revenue — premium hook)*
 Pipeline: paste URL → fetch transcript + metadata → detect concept → generate buggy snippet + options + explanation → verify. Honest limit: transcripts miss on-screen code for screencasts; fall back to concept-level predict/spot-the-flaw for arbitrary videos. *(Roadmap; the premium promise.)* **A disabled paste-URL entry already ships in the Library as the Pro teaser (B7).**
+
+### B9 — Dashboard UI redesign  *(usability; blocks demo polish)* — PLANNED, NEXT
+Phase 8 landed a lot of new dashboard surfaces (Daily Drill card, Boss drill card, Season leaderboard tile, Community drafts tile, Season banner, YouTube importer) and they stacked above the "Welcome back" hero in insertion order — the dashboard now reads top-to-bottom as *Boss drill → Season leaderboard → Community drafts → Welcome back → Ready for your first bug hunt? → stats → Import from YouTube → Library*. That's wrong on three axes:
+- **Visual hierarchy inverted.** The hero (name + "start" CTA) should greet the signed-in user *first*. Pro tiles and secondary nav tiles belong below the primary action, not above it.
+- **Tall text-only rows.** Season leaderboard + Community drafts render as full-width borderless rows with a title + arrow — reads as a nav list, not a dashboard. They look like an afterthought.
+- **Import from YouTube collapsed.** The importer now renders as a small sub-button and is almost invisible against the stats row above it. For a free feature that is also the only on-ramp for user-authored content, this is bad.
+
+**Target composition (signed-in dashboard, top → bottom):**
+1. **Hero row.** Welcome back + the next bug-hunt CTA (today's "Ready for your first bug hunt?" card) — this stays the first thing a signed-in user sees.
+2. **Stats strip.** The three KPI tiles (streak, concepts solved, mastered).
+3. **Daily Drill card.** When seeded for today. Full-width accent card so it stands apart from the hero.
+4. **Pro row — single horizontal strip.** Boss drill + Season banner + Leaderboard link side-by-side (2×2 on narrow screens, 3-up on wide). Shared card chrome so they read as a cohort, not three competing calls.
+5. **Community strip.** Community drafts tile + the YouTube importer, side-by-side at equal weight — upgrades the importer back to a first-class free-tier CTA.
+6. **Your Library** grid (unchanged below).
+
+**What that means in code:**
+- `LibraryScreen.tsx` dashboard block needs recomposition: current flat `<>` list becomes grouped sections with shared `ProRowCard` + `CommunityRowCard` wrappers.
+- `BossDrillCard`, `SeasonBanner`, `LeaderboardScreen`-link tile → consolidate into one `ProRow` component that renders three equal cells (or a tasteful "Pro — unlock" collapse when none are Pro-ready).
+- Community drafts tile + YouTubeImportCard → one `CommunityRow` component with matching chrome, so neither looks diminutive.
+- Importer gets its old visual weight back: full card with a short pitch, not a disclosed sub-button.
+- Mobile: Pro row stacks 2 → 1; Community row stacks 2 → 1; Daily Drill stays full-width.
+- Design tokens: no new tokens required. Reuse `--color-accent-weak`, `--color-border`, `--shadow-sm`.
+
+**Acceptance:** screenshot a signed-in dashboard at 1280px and 375px; verify Pro row renders Boss + Season banner + Leaderboard as one visual group; Community row renders Drafts + YouTube importer at equal weight; Importer is clearly discoverable; Welcome back is the top heading; nothing visually orphaned. No new tests. No backend changes.
 
 ---
 
@@ -616,7 +644,7 @@ Each pass writes back to `src/content/data.ts` via a code-mod (ts-morph). Valida
 
 ## Roadmap (post-buildathon)
 
-PR-review format → more judgment formats (predict-output, tradeoff, drag-drop flow) → auto-gen (B8) → more stacks/domains (B6) → ~~accounts + Supabase~~ (identity done) → real cross-device progress sync (Phase 7, pulled forward by Phase 8 v2) → **Phase 8 v2/v3 (challenge-engine addictive mechanics)** → B2B team dashboards → mastery map + XP (now partially covered by per-concept Elo).
+~~PR-review format~~ (shipped as v3b DiffReviewPanel) → more judgment formats (predict-output, tradeoff, drag-drop flow) → auto-gen (B8) → more stacks/domains (B6) → ~~accounts + Supabase~~ (identity done) → ~~real cross-device progress sync~~ (shipped in v2b SupabaseStore) → ~~Phase 8 v2/v3 (challenge-engine addictive mechanics)~~ (**done** — commits `f2835e9` through `ea2d1ef`) → **B9 dashboard UI redesign (next)** → multi-drill Boss flow + `close_season` cron (v3 polish follow-ups) → published community drafts merging into `getChallenges()` → B2B team dashboards → mastery map + XP (now partially covered by per-concept Elo).
 
 ---
 
