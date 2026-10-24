@@ -34,8 +34,9 @@ export function normalizeChallenge(c: Challenge): Challenge {
   const hasBuggyLineAnswer = typeof c.buggyLineAnswer === 'number';
   const hasSeedDist =
     Array.isArray(c.seedDistribution) && c.seedDistribution.length === c.fixOptions.length;
+  const hasCanonicalPatch = Boolean(c.canonicalPatch && typeof c.canonicalPatch.newText === 'string');
 
-  if (hasBuggyLineAnswer && hasSeedDist) return c;
+  if (hasBuggyLineAnswer && hasSeedDist && hasCanonicalPatch) return c;
 
   return {
     ...c,
@@ -45,6 +46,14 @@ export function normalizeChallenge(c: Challenge): Challenge {
     seedDistribution: hasSeedDist
       ? c.seedDistribution
       : defaultSeedDistribution(c.correctOption, c.fixOptions.length),
+    // Phase 8 v2 — derive a canonical patch from the drill's correctCode so
+    // blind-fix lights up on every drill. The whole fixed snippet counts as the
+    // "patch" — grading uses Levenshtein on whitespace-normalised text, so an
+    // exact character match isn't needed. Gemini pass #2 will author tighter,
+    // single-line patches drill-by-drill.
+    canonicalPatch: hasCanonicalPatch
+      ? c.canonicalPatch
+      : { oldLines: c.buggyLines, newText: c.correctCode },
   };
 }
 

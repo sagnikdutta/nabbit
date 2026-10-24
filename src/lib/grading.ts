@@ -38,10 +38,13 @@ export function availableFormats(challenge: Challenge) {
   if (challenge.availableFormats && challenge.availableFormats.length) {
     return challenge.availableFormats;
   }
-  const formats: ('spot-fix' | 'locate-then-fix' | 'rank-fixes')[] = ['spot-fix'];
+  const formats: ('spot-fix' | 'locate-then-fix' | 'rank-fixes' | 'blind-fix')[] = ['spot-fix'];
   if (typeof challenge.buggyLineAnswer === 'number') formats.push('locate-then-fix');
   if (Array.isArray(challenge.rankedFixes) && challenge.rankedFixes.length === challenge.fixOptions.length) {
     formats.push('rank-fixes');
+  }
+  if (challenge.canonicalPatch && typeof challenge.canonicalPatch.newText === 'string') {
+    formats.push('blind-fix');
   }
   return formats;
 }
@@ -84,7 +87,55 @@ export function grade(challenge: Challenge, input: AttemptInput): GradeResult {
       if (tau >= 0.5) return { correct: false, outcome: 0.5, basePoints: 50 };
       return { correct: false, outcome: 0, basePoints: -40 };
     }
+    case 'blind-fix': {
+      // Levenshtein similarity between the user's patch and the canonical one.
+      // ≥ 0.9 → full correct; ≥ 0.7 → partial; else wrong. Whitespace + trailing
+      // punctuation are normalised before comparing so cosmetic differences
+      // (semicolons, indentation) don't trip the grader.
+      if (!challenge.canonicalPatch) {
+        return { correct: false, outcome: 0, basePoints: -40 };
+      }
+      const sim = similarityRatio(normalizePatch(input.patch), normalizePatch(challenge.canonicalPatch.newText));
+      if (sim >= 0.9) return { correct: true, outcome: 1, basePoints: 100 };
+      if (sim >= 0.7) return { correct: false, outcome: 0.5, basePoints: 50 };
+      return { correct: false, outcome: 0, basePoints: -40 };
+    }
   }
+}
+
+/** Collapse whitespace, drop trailing punctuation; cosmetic diffs don't count. */
+export function normalizePatch(s: string): string {
+  return s
+    .replace(/\s+/g, ' ')
+    .replace(/[\s;,.]+$/g, '')
+    .trim();
+}
+
+/** Levenshtein distance between two strings. */
+export function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const prev = new Array(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+  const curr = new Array(b.length + 1);
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= b.length; j++) prev[j] = curr[j];
+  }
+  return prev[b.length];
+}
+
+/** Similarity in [0, 1] — 1 identical, 0 nothing in common. */
+export function similarityRatio(a: string, b: string): number {
+  if (!a && !b) return 1;
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+  return 1 - levenshtein(a, b) / maxLen;
 }
 
 /**

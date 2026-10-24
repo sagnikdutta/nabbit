@@ -49,6 +49,9 @@ function canonicalInput(challenge: ReturnType<typeof normalizeChallenge>, format
     case 'rank-fixes':
       if (!Array.isArray(challenge.rankedFixes)) return null;
       return { format: 'rank-fixes', order: challenge.rankedFixes };
+    case 'blind-fix':
+      if (!challenge.canonicalPatch) return null;
+      return { format: 'blind-fix', patch: challenge.canonicalPatch.newText };
     default:
       return null;
   }
@@ -82,6 +85,31 @@ test('normalize fills locate-then-fix on every drill (buggyLineAnswer = buggyLin
     );
     assert.equal(typeof c.buggyLineAnswer, 'number');
   }
+});
+
+test('normalize fills blind-fix on every drill (canonicalPatch defaults to correctCode)', () => {
+  for (const raw of CURATED_CHALLENGES) {
+    const c = normalizeChallenge(raw);
+    const formats = availableFormats(c);
+    assert.ok(
+      formats.includes('blind-fix'),
+      `${c.id} should play blind-fix after normalize`,
+    );
+    assert.ok(typeof c.canonicalPatch?.newText === 'string');
+  }
+});
+
+test('blind-fix grading: ~exact patch → correct; slightly off → partial; nonsense → wrong', () => {
+  const c = normalizeChallenge(CURATED_CHALLENGES[0]);
+  const canonical = c.canonicalPatch!.newText;
+  const perfect = grade(c, { format: 'blind-fix', patch: canonical });
+  assert.equal(perfect.correct, true);
+  // Slightly off — insert some trivial noise but keep most text intact.
+  const slightlyOff = canonical.slice(0, Math.max(1, Math.floor(canonical.length * 0.78)));
+  const partial = grade(c, { format: 'blind-fix', patch: slightlyOff });
+  assert.ok(partial.outcome >= 0.5, `expected ≥ 0.5 outcome, got ${partial.outcome}`);
+  const wrong = grade(c, { format: 'blind-fix', patch: 'totally unrelated text' });
+  assert.equal(wrong.outcome, 0);
 });
 
 test('spot-fix grades a wrong pick as outcome 0', () => {

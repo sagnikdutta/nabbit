@@ -13,6 +13,7 @@ import { ConfidencePicker } from '../components/ConfidencePicker';
 import { SpotFixPanel } from '../components/formats/SpotFixPanel';
 import { LocateThenFixPanel } from '../components/formats/LocateThenFixPanel';
 import { RankFixesPanel } from '../components/formats/RankFixesPanel';
+import { BlindFixPanel } from '../components/formats/BlindFixPanel';
 import { ArrowLeft, CheckCircle, AlertTriangle, ShieldCheck, Target, X } from 'lucide-react';
 
 export interface AttemptResult {
@@ -75,6 +76,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [selectedLine, setSelectedLine] = useState<number | null>(null);
   const [rankOrder, setRankOrder] = useState<number[]>(identityOrder);
+  const [patch, setPatch] = useState<string>('');
   const [confidence, setConfidence] = useState<Confidence>('sure');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [phase, setPhase] = useState<'answering' | 'revealed'>('answering');
@@ -89,6 +91,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
     setSelectedOption(null);
     setSelectedLine(null);
     setRankOrder(identityOrder);
+    setPatch('');
     setPhase('answering');
     setResult(null);
     setIsSubmitting(false);
@@ -108,6 +111,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
   const canSubmit = (() => {
     if (format === 'locate-then-fix') return selectedLine !== null && selectedOption !== null;
     if (format === 'rank-fixes') return true; // any ordering is a valid attempt
+    if (format === 'blind-fix') return patch.trim().length > 0;
     return selectedOption !== null;
   })();
 
@@ -119,6 +123,8 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
       input = { format: 'locate-then-fix', line: selectedLine as number, chosen: selectedOption as number };
     } else if (format === 'rank-fixes') {
       input = { format: 'rank-fixes', order: rankOrder };
+    } else if (format === 'blind-fix') {
+      input = { format: 'blind-fix', patch };
     } else {
       input = { format: 'spot-fix', chosen: selectedOption as number };
     }
@@ -137,8 +143,12 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
   useEffect(() => {
     if (phase !== 'answering') return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't hijack keystrokes while the user is typing in the blind-fix textarea.
+      const inField = e.target instanceof HTMLElement
+        && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT');
+      if (inField) return;
       if (['1', '2', '3', '4'].includes(e.key)) {
-        if (format === 'rank-fixes') return; // 1-4 would collide with rank positions
+        if (format === 'rank-fixes' || format === 'blind-fix') return;
         const idx = parseInt(e.key, 10) - 1;
         if (idx >= challenge.fixOptions.length) return;
         if (format === 'locate-then-fix' && selectedLine === null) return;
@@ -151,16 +161,18 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
         setSelectedOption(null);
         setSelectedLine(null);
         setRankOrder(identityOrder);
+        setPatch('');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedOption, selectedLine, rankOrder, challenge, phase, format, formats, canSubmit, identityOrder]);
+  }, [selectedOption, selectedLine, rankOrder, patch, challenge, phase, format, formats, canSubmit, identityOrder]);
 
   const handleRetry = () => {
     setSelectedOption(null);
     setSelectedLine(null);
     setRankOrder(identityOrder);
+    setPatch('');
     setResult(null);
     setPhase('answering');
     startedAt.current = Date.now();
@@ -172,6 +184,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
     setSelectedOption(null);
     setSelectedLine(null);
     setRankOrder(identityOrder);
+    setPatch('');
     startedAt.current = Date.now();
   };
 
@@ -378,6 +391,13 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
               challenge={challenge}
               order={rankOrder}
               onChangeOrder={setRankOrder}
+              disabled={isSubmitting}
+            />
+          ) : format === 'blind-fix' ? (
+            <BlindFixPanel
+              challenge={challenge}
+              patch={patch}
+              onChangePatch={setPatch}
               disabled={isSubmitting}
             />
           ) : (

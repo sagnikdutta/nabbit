@@ -4,7 +4,8 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { YouTubeImportCard } from '../components/YouTubeImportCard';
 import { DailyDrillCard } from '../components/DailyDrillCard';
-import { Play, CheckCircle2, ArrowRight, ShieldCheck, BookOpen, Flame, Clock, Youtube } from 'lucide-react';
+import { BossDrillCard } from '../components/BossDrillCard';
+import { Play, CheckCircle2, ArrowRight, ShieldCheck, BookOpen, Flame, Clock, Youtube, Trophy } from 'lucide-react';
 
 export interface LibraryScreenProps {
   videos: Video[];
@@ -15,11 +16,14 @@ export interface LibraryScreenProps {
   /** 'landing' = pitch page for visitors (trial); 'dashboard' = signed-in home. */
   mode?: 'landing' | 'dashboard';
   onGoToRecall?: () => void;
+  onGoToLeaderboard?: () => void;
   onSignUp?: () => void;
   onSelectVideo: (videoId: string) => void;
   onSelectChallenge: (challengeId: string) => void;
   onImportYouTube: (url: string, topicHint?: string) => Promise<{ video: Video; challenges: Challenge[]; source: string }>;
   onRefreshData?: () => Promise<void>;
+  // Phase 8 v2 — gates Boss-drill + leaderboard surfaces (visible but locked when false).
+  isPro?: boolean;
 }
 
 export const LibraryScreen: React.FC<LibraryScreenProps> = ({
@@ -30,11 +34,13 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   userName,
   mode = 'landing',
   onGoToRecall,
+  onGoToLeaderboard,
   onSignUp,
   onSelectVideo,
   onSelectChallenge,
   onImportYouTube,
   onRefreshData,
+  isPro = false,
 }) => {
   const isDashboard = mode === 'dashboard';
   const [selectedStack, setSelectedStack] = useState<'all' | 'react' | 'javascript' | 'custom'>('all');
@@ -96,6 +102,31 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         <>
           {/* Phase 8 v2 — Daily Drill (hides when no row seeded for today). */}
           <DailyDrillCard onOpenChallenge={onSelectChallenge} />
+
+          {/* Phase 8 v2 — Boss drill (Pro-gated; shows lock + CTA for non-Pro). */}
+          <BossDrillCard
+            isPro={isPro}
+            allChallenges={challenges}
+            onLaunchDrill={onSelectChallenge}
+          />
+
+          {/* Phase 8 v2 — jump to the Pro leaderboard page. */}
+          {onGoToLeaderboard && (
+            <button
+              type="button"
+              onClick={onGoToLeaderboard}
+              className="w-full flex items-center justify-between gap-3 rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-left cursor-pointer hover:bg-[var(--color-surface-subtle)] transition-colors"
+            >
+              <span className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+                <Trophy className="w-4 h-4 text-[var(--color-accent)]" />
+                Season leaderboard
+                {!isPro && (
+                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-[var(--radius-sm)] bg-[var(--color-warning-weak)] text-[var(--color-warning-ink)] uppercase">Pro</span>
+                )}
+              </span>
+              <ArrowRight className="w-4 h-4 text-[var(--color-muted)]" />
+            </button>
+          )}
 
           <section className="space-y-4">
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--color-text)]">

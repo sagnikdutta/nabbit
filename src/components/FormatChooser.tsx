@@ -1,13 +1,13 @@
 import React from 'react';
 import { ChallengeFormat } from '../lib/types';
-import { MousePointerClick, Crosshair, ListOrdered } from 'lucide-react';
+import { MousePointerClick, Crosshair, ListOrdered, Pencil } from 'lucide-react';
 
 const META: Record<ChallengeFormat, { label: string; icon: React.ReactNode; hint: string }> = {
   'spot-fix':         { label: 'Spot-fix',        icon: <MousePointerClick className="w-3.5 h-3.5" />, hint: 'Pick the correct fix.' },
   'locate-then-fix':  { label: 'Locate + fix',    icon: <Crosshair className="w-3.5 h-3.5" />,          hint: 'Pick the buggy line, then the fix.' },
   'rank-fixes':       { label: 'Rank fixes',      icon: <ListOrdered className="w-3.5 h-3.5" />,        hint: 'Order fixes worst → best.' },
-  // v2/v3 placeholders — not shown in v1a but kept so the mapping compiles.
-  'blind-fix':        { label: 'Blind fix',       icon: null, hint: 'Write the patch.' },
+  'blind-fix':        { label: 'Blind fix',       icon: <Pencil className="w-3.5 h-3.5" />,             hint: 'Write the patch yourself.' },
+  // v3 placeholders — kept so the mapping compiles.
   'diff-review':      { label: 'Diff review',     icon: null, hint: 'Approve or request changes.' },
   'impostor':         { label: 'Impostor',        icon: null, hint: 'Pro drill.' },
   'red-herring':      { label: 'Red herring',     icon: null, hint: 'Pro drill.' },

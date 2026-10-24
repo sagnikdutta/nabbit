@@ -17,10 +17,12 @@ import { ChallengeScreen } from './screens/ChallengeScreen';
 import { RecallDashboardScreen } from './screens/RecallDashboardScreen';
 
 import { AuthScreen } from './screens/AuthScreen';
+import { LeaderboardScreen } from './screens/LeaderboardScreen';
 import { trackTrialView, trackTrialCompleted, claimLeads } from './lib/leads';
 import { UserAccount } from './lib/types';
+import { supabase } from './lib/supabase';
 
-type Route = 'library' | 'challenge' | 'recall' | 'auth';
+type Route = 'library' | 'challenge' | 'recall' | 'auth' | 'leaderboard';
 
 // --- Hash router (B5): each screen has a shareable, refresh-safe URL ---
 // #/              → library
@@ -35,6 +37,7 @@ function parseHash(): { route: Route; challengeId: string | null } {
   }
   if (h === '/recall') return { route: 'recall', challengeId: null };
   if (h === '/auth' || h === '/signin' || h === '/signup') return { route: 'auth', challengeId: null };
+  if (h === '/leaderboard') return { route: 'leaderboard', challengeId: null };
   return { route: 'library', challengeId: null };
 }
 
@@ -42,6 +45,7 @@ function hashFor(route: Route, challengeId?: string): string {
   if (route === 'challenge' && challengeId) return `#/challenge/${encodeURIComponent(challengeId)}`;
   if (route === 'recall') return '#/recall';
   if (route === 'auth') return '#/auth';
+  if (route === 'leaderboard') return '#/leaderboard';
   return '#/';
 }
 
@@ -117,6 +121,23 @@ export default function App() {
   // current challenge-browsing session. Resets when the user leaves the
   // challenge screen or signs out.
   const [combo, setCombo] = useState(0);
+
+  // Phase 8 v2 — public.users.is_pro flag. Fetched when the user changes.
+  // Gates Boss drill + Seasons leaderboard surfaces (visible but locked otherwise).
+  const [isPro, setIsPro] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    if (!currentUser || currentUser.provider !== 'supabase' || !supabase) {
+      setIsPro(false);
+      return;
+    }
+    supabase.from('users').select('is_pro').eq('id', currentUser.id).maybeSingle()
+      .then(
+        ({ data }) => { if (alive) setIsPro(Boolean(data?.is_pro)); },
+        () => { if (alive) setIsPro(false); },
+      );
+    return () => { alive = false; };
+  }, [currentUser?.id, currentUser?.provider]);
 
   // Subscribe to auth changes
   useEffect(() => {
@@ -504,11 +525,13 @@ export default function App() {
             userName={profileName}
             mode={currentUser ? 'dashboard' : 'landing'}
             onGoToRecall={() => handleNavigate('recall')}
+            onGoToLeaderboard={() => handleNavigate('leaderboard')}
             onSignUp={() => handleOpenAuth('signup')}
             onSelectVideo={handleSelectVideo}
             onSelectChallenge={handleSelectChallenge}
             onImportYouTube={handleImportYouTube}
             onRefreshData={loadData}
+            isPro={isPro}
           />
         )}
 
@@ -532,6 +555,13 @@ export default function App() {
           <div className="py-24 text-center text-sm text-[var(--color-muted)] font-mono">
             Loading drill…
           </div>
+        )}
+
+        {activeRoute === 'leaderboard' && (
+          <LeaderboardScreen
+            isPro={isPro}
+            onBack={() => handleNavigate('library')}
+          />
         )}
 
         {activeRoute === 'recall' && (
