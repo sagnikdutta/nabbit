@@ -38,6 +38,10 @@ import { UserAccount } from '../../lib/types';
 type Mode = 'signin' | 'signup';
 type Theme = 'light' | 'dark';
 
+// Social sign-in is wired (api.signInWithOAuth) but hidden until the Google and
+// GitHub providers are enabled in Supabase. Flip to true to show the buttons.
+const OAUTH_ENABLED = false;
+
 const COUNTRY_CODES = [
   { code: '+1', flag: '\uD83C\uDDFA\uD83C\uDDF8' },
   { code: '+44', flag: '\uD83C\uDDEC\uD83C\uDDE7' },
@@ -316,28 +320,32 @@ export default function V2AuthPage({
             </div>
           )}
 
-          <div className="v2-auth-oauth">
-            <button
-              type="button"
-              className="v2-oauth-btn"
-              disabled={oauthBusy !== null}
-              onClick={() => handleOAuth('google')}
-            >
-              <GoogleGlyph /> {oauthBusy === 'google' ? 'Redirecting…' : 'Continue with Google'}
-            </button>
-            <button
-              type="button"
-              className="v2-oauth-btn"
-              disabled={oauthBusy !== null}
-              onClick={() => handleOAuth('github')}
-            >
-              <GitHubGlyph /> {oauthBusy === 'github' ? 'Redirecting…' : 'Continue with GitHub'}
-            </button>
-          </div>
+          {OAUTH_ENABLED && (
+            <>
+              <div className="v2-auth-oauth">
+                <button
+                  type="button"
+                  className="v2-oauth-btn"
+                  disabled={oauthBusy !== null}
+                  onClick={() => handleOAuth('google')}
+                >
+                  <GoogleGlyph /> {oauthBusy === 'google' ? 'Redirecting…' : 'Continue with Google'}
+                </button>
+                <button
+                  type="button"
+                  className="v2-oauth-btn"
+                  disabled={oauthBusy !== null}
+                  onClick={() => handleOAuth('github')}
+                >
+                  <GitHubGlyph /> {oauthBusy === 'github' ? 'Redirecting…' : 'Continue with GitHub'}
+                </button>
+              </div>
 
-          <div className="v2-auth-divider" role="separator">
-            <span>or</span>
-          </div>
+              <div className="v2-auth-divider" role="separator">
+                <span>or</span>
+              </div>
+            </>
+          )}
 
           {generalError && (
             <div className="v2-auth-error" role="alert">

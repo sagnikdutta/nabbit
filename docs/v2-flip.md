@@ -23,9 +23,9 @@ is deleted (step 5 removes it).
 
 ## 1. Pre-flight (you)
 
-- [ ] Supabase Auth: Google and GitHub providers enabled, `<origin>/v2/` in the
-      redirect allow-list (staging and production) — otherwise the V2 OAuth buttons
-      show "isn't enabled yet".
+- [x] OAuth deferred: the Google/GitHub buttons are hidden (`OAUTH_ENABLED = false`
+      in `src/v2/pages/Auth.tsx`). To enable later: turn on both providers in
+      Supabase Auth, add `<origin>/v2/` to the redirect allow-list, set the flag to `true`.
 - [ ] Signed-in and Pro checklist from the parity-cards work passed (Daily Drill,
       Boss launch, Season banner, Mastery, Community tile, combo chaining).
 - [ ] 6 local commits pushed and deployed to staging.
@@ -74,7 +74,10 @@ and the support inbox. If anything is wrong, roll back first and debug after.
 
 ## 4. Sunset V1 (you decide the date)
 
-Pick a date and record it here: **V1 sunset date: ________**
+**V1 sunset date: 27 October 2026.** Delete the V1 code (step 5) on or after this
+date, and only if the flip has been live without needing the rollback. If the flip
+slips, the date slips with it — V1 must stay available until V2 has served as the
+default for the whole window.
 
 Suggested shape (adjust to your user base): keep `/v1/` reachable but not default
 for a fixed window after the flip, announce the date in-app, then delete.
