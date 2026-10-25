@@ -139,16 +139,6 @@
 .v2-shell-content, .v2-shell-rail { min-width: 0; }
 .v2-shell-rail { display: grid; align-content: start; gap: 12px; }
 
-.v2-shell-toast {
-  position: fixed; bottom: 22px; left: 50%;
-  transform: translate(-50%, 0);
-  background: var(--ink); color: var(--panel);
-  padding: 12px 18px; border-radius: 10px;
-  box-shadow: var(--shadow);
-  z-index: 20;
-  font-size: 13px;
-}
-
 @media (max-width: 1200px) {
   .v2-shell-workspace.with-rail { grid-template-columns: minmax(0, 1fr) 310px; gap: 12px; padding: 14px; }
 }

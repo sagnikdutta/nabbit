@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { UserAccount } from '../lib/types';
+import { V2Toast } from './components/primitives';
 import './theme/tokens.css';
 import './v2shell.css';
 
@@ -204,11 +205,7 @@ export function V2Shell({
         </div>
       </div>
 
-      {toast && (
-        <div className="v2-shell-toast show" role="status" aria-live="polite">
-          {toast}
-        </div>
-      )}
+      <V2Toast message={toast} />
     </div>
   );
 }

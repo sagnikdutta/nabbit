@@ -3,6 +3,15 @@ import { api } from '../lib/api';
 import { Challenge, RecallItem, RecallStats, Video } from '../lib/types';
 import { V2Shell } from './V2Shell';
 import { useV2Theme } from './useTheme';
+import { useV2IsPro } from './useShellData';
+import {
+  V2DailyDrillCard,
+  V2BossDrillCard,
+  V2SeasonCard,
+  V2CommunityTile,
+  V2MasteryPanel,
+} from './components/DashboardCards';
+import { V2Button, V2Chip, V2Modal, V2Panel, V2Progress } from './components/primitives';
 import './dashboard.css';
 
 /*
@@ -87,6 +96,7 @@ function conceptGlyph(concept: string): string {
 
 export default function V2Dashboard() {
   const [theme, toggleTheme] = useV2Theme();
+  const { isPro } = useV2IsPro();
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>(EMPTY_SNAPSHOT);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('Recent');
@@ -202,6 +212,11 @@ export default function V2Dashboard() {
     const unsolved = challenges.find(c => !solvedIds.has(c.id));
     return (unsolved ?? challenges[0])?.id ?? null;
   }, [continueCard, challengesByVideoId, recallItems]);
+
+  const allChallenges = useMemo(
+    () => Array.from(challengesByVideoId.values()).flat(),
+    [challengesByVideoId],
+  );
 
   // ----- Progress panel metrics -----
   const videosProcessed = videos.length;
@@ -350,11 +365,7 @@ export default function V2Dashboard() {
         </div>
       </section>
 
-      <section className="v2-panel">
-        <div className="v2-panel-head">
-          <h2>Recall Queue</h2>
-          <a className="v2-link-btn" href="/v2/recall">View All →</a>
-        </div>
+      <V2Panel title="Recall Queue" action={<V2Button variant="link" href="/v2/recall">View All →</V2Button>}>
         {dueItems.length === 0 ? (
           <p className="v2-muted v2-small" style={{ margin: 0 }}>
             Nothing due right now. Come back after a drill to see what resurfaces.
@@ -375,7 +386,11 @@ export default function V2Dashboard() {
             ))}
           </div>
         )}
-      </section>
+      </V2Panel>
+
+      <V2MasteryPanel limit={5} />
+
+      <V2CommunityTile />
 
       <section className="v2-panel">
         <div className="v2-panel-head">
@@ -466,6 +481,13 @@ export default function V2Dashboard() {
         </div>
       </section>
 
+      {/* ---- Daily / Boss / Season ---- */}
+      <div className="v2-feature-stack">
+        <V2DailyDrillCard />
+        <V2BossDrillCard isPro={isPro} challenges={allChallenges} />
+        <V2SeasonCard isPro={isPro} />
+      </div>
+
       {/* ---- Continue Learning ---- */}
       {continueCard && (
         <section className="v2-section">
@@ -489,16 +511,14 @@ export default function V2Dashboard() {
               <h3>{continueCard.video.title}</h3>
               <div className="v2-muted v2-small">{continueCard.video.channel}</div>
               <div className="v2-progress-row">
-                <div className="v2-progress">
-                  <span style={{ width: `${Math.round(continueCard.progress * 100)}%` }} />
-                </div>
+                <V2Progress value={continueCard.progress} label="Video progress" />
                 <span className="v2-small v2-muted">
                   {continueCard.drillsDone} / {continueCard.drillsTotal} drills completed
                 </span>
               </div>
               <div className="v2-tags">
                 {continueCard.tags.map(t => (
-                  <span key={t} className="v2-chip">{t}</span>
+                  <V2Chip key={t}>{t}</V2Chip>
                 ))}
               </div>
             </div>
@@ -568,16 +588,14 @@ export default function V2Dashboard() {
                 <h3>{card.video.title}</h3>
                 <div className="v2-creator">{card.video.channel}</div>
                 <div className="v2-progress-row">
-                  <div className="v2-progress">
-                    <span style={{ width: `${Math.round(card.progress * 100)}%` }} />
-                  </div>
+                  <V2Progress value={card.progress} label="Video progress" />
                   <span className="v2-small v2-muted">
                     {card.drillsDone} / {card.drillsTotal} drills
                   </span>
                 </div>
                 <div className="v2-tags">
                   {card.tags.map(t => (
-                    <span key={t} className="v2-chip">{t}</span>
+                    <V2Chip key={t}>{t}</V2Chip>
                   ))}
                 </div>
               </article>
@@ -628,47 +646,19 @@ export default function V2Dashboard() {
         </section>
       )}
 
-      {modalOpen && (
-        <div
-          className="v2-modal-backdrop"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: '#070b18a6',
-            display: 'grid',
-            placeItems: 'center',
-            zIndex: 30,
-            padding: 20,
-          }}
-          role="dialog"
-          aria-modal="true"
-          onClick={e => {
-            if (e.target === e.currentTarget) setModalOpen(false);
-          }}
-        >
-          <div
-            style={{
-              background: 'var(--panel)',
-              border: '1px solid var(--line)',
-              borderRadius: 16,
-              padding: 24,
-              width: 'min(510px, 100%)',
-              boxShadow: '0 25px 80px #0003',
-            }}
-          >
-            <h2 style={{ margin: '0 0 8px' }}>{modalTitle}</h2>
-            <p className="v2-muted">{modalBody}</p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
-              <button className="v2-secondary" onClick={() => setModalOpen(false)}>
-                Not now
-              </button>
-              <button className="v2-primary" onClick={handleModalConfirm}>
-                {modalAction}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <V2Modal
+        open={modalOpen}
+        title={modalTitle}
+        onClose={() => setModalOpen(false)}
+        actions={(
+          <>
+            <V2Button variant="secondary" onClick={() => setModalOpen(false)}>Not now</V2Button>
+            <V2Button onClick={handleModalConfirm}>{modalAction}</V2Button>
+          </>
+        )}
+      >
+        <p className="v2-muted">{modalBody}</p>
+      </V2Modal>
     </V2Shell>
   );
 }

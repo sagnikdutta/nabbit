@@ -5,15 +5,8 @@
  * and shared pill/button primitives that other dashboard sections reuse.
  */
 
-/* Shared button + chip primitives — small and self-contained; promoting them
-   to a V2 component library is tracked under V2-A. */
-.v2-primary, .v2-secondary, .v2-icon-btn, .v2-tab, .v2-chip, .v2-link-btn { border: 0; transition: 0.15s; }
-.v2-primary {
-  background: linear-gradient(135deg, var(--purple), var(--purple2));
-  color: #fff; border-radius: 9px; padding: 11px 16px;
-  font-weight: 750; box-shadow: 0 4px 12px #6847ff20;
-}
-.v2-primary:hover { filter: brightness(1.06); transform: translateY(-1px); }
+/* Button / chip / progress / panel primitives live in components/primitives.css. */
+.v2-icon-btn, .v2-tab { border: 0; transition: 0.15s; }
 
 .v2-library-empty {
   padding: 30px;
@@ -79,7 +72,6 @@
 .v2-section-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .v2-section-head h2 { font-size: 18px; letter-spacing: -0.4px; margin: 0; }
 .v2-section-head .v2-spacer { flex: 1; }
-.v2-link-btn { background: none; color: var(--purple); font-weight: 650; font-size: 12px; padding: 5px; cursor: pointer; }
 
 .v2-continue-card {
   border: 1px solid var(--line); background: var(--panel);
@@ -102,26 +94,8 @@
 .v2-muted { color: var(--muted); }
 .v2-small { font-size: 11px; }
 .v2-tags { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
-.v2-chip {
-  background: var(--soft); border: 1px solid var(--line);
-  color: var(--muted); padding: 5px 10px;
-  border-radius: 8px; font-size: 11px;
-}
 .v2-progress-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
-.v2-progress {
-  height: 8px; border-radius: 8px; background: var(--soft);
-  overflow: hidden; flex: 1; min-width: 55px;
-}
-.v2-progress span {
-  display: block; height: 100%; border-radius: 8px;
-  background: linear-gradient(90deg, var(--purple), #9a80ff);
-}
 .v2-continue-actions { display: grid; gap: 8px; }
-.v2-secondary {
-  background: var(--panel); border: 1px solid var(--line); color: var(--ink);
-  border-radius: 8px; padding: 10px; font-weight: 650; font-size: 12px;
-}
-.v2-secondary:hover { background: var(--soft); }
 
 .v2-tabs { display: flex; gap: 7px; flex-wrap: wrap; }
 .v2-tab {
@@ -168,12 +142,6 @@
 .v2-recommend-card strong { display: block; font-size: 12px; }
 .v2-recommend-card span { font-size: 11px; color: var(--muted); }
 
-.v2-panel {
-  border: 1px solid var(--line); background: var(--panel);
-  border-radius: 11px; padding: 17px; box-shadow: var(--shadow);
-}
-.v2-panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 13px; }
-.v2-panel-head h2 { font-size: 15px; margin: 0; flex: 1; }
 
 .v2-mastery-layout { display: grid; grid-template-columns: 132px minmax(0, 1fr); align-items: center; gap: 13px; }
 .v2-ring {
@@ -280,3 +248,48 @@
   .v2-tabs { gap: 4px; }
   .v2-tab { padding: 7px 9px; }
 }
+
+/* ---- Dashboard parity cards (Daily / Boss / Season / Community / Mastery) ---- */
+.v2-feature-card {
+  display: flex; align-items: center; gap: 13px; flex-wrap: wrap;
+  border: 1px solid var(--line); background: var(--panel);
+  border-radius: 11px; padding: 14px 17px; box-shadow: var(--shadow);
+  color: inherit; text-decoration: none;
+}
+.v2-feature-card.accent { background: var(--soft); border-color: var(--purple); }
+.v2-feature-card.locked { opacity: 0.92; }
+.v2-feature-card.season:hover { background: var(--soft); }
+.v2-feature-ico {
+  width: 37px; height: 37px; border-radius: 9px; flex: none;
+  background: var(--soft); display: grid; place-items: center; font-size: 17px;
+}
+.v2-feature-card.accent .v2-feature-ico { background: var(--purple); }
+.v2-feature-body { flex: 1; min-width: 180px; }
+.v2-feature-body strong { display: block; font-size: 13px; }
+.v2-feature-body span { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.v2-feature-card .v2-primary { text-decoration: none; white-space: nowrap; }
+.v2-good { color: #16a34a; }
+.v2-pro-tag {
+  display: inline-block !important; margin-left: 6px; padding: 1px 6px; border-radius: 5px;
+  font-size: 9px !important; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+  background: #f59e0b22; color: #b45309 !important;
+}
+.v2-feature-stack { display: grid; gap: 12px; margin-bottom: 20px; }
+
+.v2-draft-row {
+  display: flex; justify-content: space-between; gap: 8px; align-items: center;
+  padding: 8px 10px; border-radius: 8px; background: var(--soft);
+  color: inherit; text-decoration: none;
+}
+.v2-draft-row strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v2-draft-row span { font-size: 10px; color: var(--muted); white-space: nowrap; }
+
+.v2-mastery-rows { display: grid; gap: 8px; }
+.v2-mastery-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 9px;
+  padding: 8px 10px; border-radius: 8px; background: var(--soft);
+}
+.v2-mastery-row strong { display: block; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v2-mastery-row div span { font-size: 10px; color: var(--muted); }
+.v2-mastery-row b { font-size: 13px; font-variant-numeric: tabular-nums; }
+.v2-bucket { font-size: 10px; font-weight: 650; padding: 1px 6px; border: 1px solid; border-radius: 5px; }
