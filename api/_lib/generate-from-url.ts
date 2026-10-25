@@ -11,7 +11,40 @@ import type { Challenge, Video } from '../../src/lib/types.js';
 
 // The model this endpoint has always used; override per environment with GEMINI_MODEL.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+// Used when the primary model is overloaded (503) or rate-limited (429).
+const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash';
 const isProduction = process.env.NODE_ENV === 'production';
+
+// Vercel kills the function at maxDuration (60s in vercel.json); stop retrying before that.
+const RETRY_DEADLINE_MS = 42_000;
+
+function isTransient(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /"code":\s*(429|500|503|504)|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(msg);
+}
+
+/**
+ * Run a Gemini call, retrying transient failures (high demand / quota spikes):
+ * primary model twice, then the fallback model twice, with short backoff.
+ * Non-transient errors (bad key, invalid request) are thrown immediately.
+ */
+async function withModelFallback<T>(startedAt: number, call: (model: string) => Promise<T>): Promise<T> {
+  const models = GEMINI_FALLBACK_MODEL && GEMINI_FALLBACK_MODEL !== GEMINI_MODEL
+    ? [GEMINI_MODEL, GEMINI_MODEL, GEMINI_FALLBACK_MODEL, GEMINI_FALLBACK_MODEL]
+    : [GEMINI_MODEL, GEMINI_MODEL];
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < models.length; attempt++) {
+    try {
+      return await call(models[attempt]);
+    } catch (err) {
+      lastErr = err;
+      if (!isTransient(err) || Date.now() - startedAt > RETRY_DEADLINE_MS) throw err;
+      console.warn(`[Nabbit] Gemini ${models[attempt]} transient failure (attempt ${attempt + 1}/${models.length}), retrying`);
+      await new Promise(r => setTimeout(r, 1200 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
+}
 
 export interface GenerateResult {
   status: number;
@@ -26,6 +59,7 @@ export function geminiStatusLine(): string {
 
 export async function generateFromUrl(body: unknown): Promise<GenerateResult> {
   const reply = (status: number, json: Record<string, unknown>): GenerateResult => ({ status, json });
+  const startedAt = Date.now();
   try {
     const { url, topicHint } = (body ?? {}) as { url?: unknown; topicHint?: string };
     if (!url || typeof url !== 'string') {
@@ -124,8 +158,8 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
 - videoTimestampSeconds: The exact second in the tutorial where this concept is taught.
 - inspectionClue: A specific pointer directing the reviewer's attention to the problematic property or line.`;
 
-        const response = await ai.models.generateContent({
-          model: GEMINI_MODEL,
+        const response = await withModelFallback(startedAt, model => ai.models.generateContent({
+          model,
           contents: prompt,
           config: {
             responseMimeType: 'application/json',
@@ -189,7 +223,7 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
               required: ['title', 'channel', 'stack', 'duration', 'description', 'challenges'],
             },
           },
-        });
+        }));
 
         const dataText = response.text;
         if (dataText) {
