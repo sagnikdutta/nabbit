@@ -20,17 +20,6 @@
 }
 .v2-recall-header p { margin: 0; color: var(--muted); font-size: 13px; max-width: 620px; line-height: 1.55; }
 .v2-recall-header-spacer { flex: 1; }
-.v2-recall-header-cta {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 9px 16px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  color: var(--ink);
-  font-size: 13px; font-weight: 650;
-  text-decoration: none;
-}
-.v2-recall-header-cta:hover { background: var(--soft); border-color: var(--purple-border); color: var(--purple); }
 
 /* ---- Time travel dev strip ---- */
 .v2-timetravel {
@@ -145,17 +134,6 @@
   font-weight: 700;
 }
 .v2-recall-section-head .spacer { flex: 1; }
-.v2-recall-section-head .start {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 8px 16px;
-  background: linear-gradient(135deg, var(--purple), var(--purple2));
-  color: #fff;
-  border: 0; border-radius: 10px;
-  font-size: 13px; font-weight: 700;
-  text-decoration: none;
-  box-shadow: 0 4px 12px #6847ff20;
-}
-.v2-recall-section-head .start:hover { filter: brightness(1.06); transform: translateY(-1px); }
 
 /* ---- Due queue ---- */
 .v2-due-grid {

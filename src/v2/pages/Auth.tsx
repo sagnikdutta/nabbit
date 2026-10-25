@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import '../theme/tokens.css';
 import './auth.css';
+import { V2Button, V2Toast } from '../components/primitives';
 import { api } from '../../lib/api';
 import { UserAccount } from '../../lib/types';
 
@@ -460,7 +461,7 @@ export default function V2AuthPage({
               </div>
             )}
 
-            <button
+            <V2Button
               type="submit"
               className="v2-auth-submit"
               disabled={isSubmitting}
@@ -474,7 +475,7 @@ export default function V2AuthPage({
                     {isSignUp ? 'Create account' : 'Sign in'} <ArrowRight size={16} />
                   </>
                 )}
-            </button>
+            </V2Button>
           </form>
 
           <label className="v2-auth-remember">
@@ -510,27 +511,7 @@ export default function V2AuthPage({
         </section>
       </main>
 
-      {toast && (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            position: 'fixed',
-            bottom: 24,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'var(--ink)',
-            color: 'var(--panel)',
-            padding: '12px 18px',
-            borderRadius: 10,
-            boxShadow: 'var(--shadow)',
-            zIndex: 20,
-            fontSize: 13,
-          }}
-        >
-          {toast}
-        </div>
-      )}
+      <V2Toast message={toast} />
     </div>
   );
 }

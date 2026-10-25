@@ -23,6 +23,8 @@ import {
 } from '../../lib/reminders';
 import { V2Shell } from '../V2Shell';
 import { useV2Theme } from '../useTheme';
+import { V2MasteryPanel } from '../components/DashboardCards';
+import { V2Button } from '../components/primitives';
 import './recall.css';
 
 /*
@@ -188,9 +190,9 @@ export default function V2RecallPage() {
             <p>Prevent tutorial decay through automated Ebbinghaus resurfacing (1 / 3 / 7 / 14 / 30 day cycles).</p>
           </div>
           <div className="v2-recall-header-spacer" />
-          <a className="v2-recall-header-cta" href="/v2/">
+          <V2Button variant="secondary" size="lg" href="/v2/">
             Browse library <ArrowRight size={14} />
-          </a>
+          </V2Button>
         </header>
 
         {offsetDays === 0 && (
@@ -264,9 +266,9 @@ export default function V2RecallPage() {
             <span className="count">{dueItems.length}</span>
             <div className="spacer" />
             {dueItems.length > 0 && (
-              <a className="start" href={`/v2/challenge/${encodeURIComponent(dueItems[0].challengeId)}`}>
+              <V2Button size="lg" href={`/v2/challenge/${encodeURIComponent(dueItems[0].challengeId)}`}>
                 <Play size={13} /> Start recall session
-              </a>
+              </V2Button>
             )}
           </div>
 
@@ -347,6 +349,9 @@ export default function V2RecallPage() {
             ))}
           </section>
         )}
+
+        {/* ---- Per-concept Elo mastery ---- */}
+        <V2MasteryPanel />
       </div>
     </V2Shell>
   );

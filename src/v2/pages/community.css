@@ -30,23 +30,6 @@
   font-weight: 700;
 }
 .v2-comm-header .spacer { flex: 1; }
-.v2-comm-header-cta {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 9px 16px;
-  border: 0; border-radius: 10px;
-  background: linear-gradient(135deg, var(--purple), var(--purple2));
-  color: #fff;
-  font-weight: 700;
-  font-size: 13px;
-  text-decoration: none;
-  box-shadow: 0 4px 12px #6847ff20;
-}
-.v2-comm-header-cta.secondary {
-  background: var(--panel);
-  color: var(--ink);
-  border: 1px solid var(--line);
-  box-shadow: none;
-}
 .v2-comm-sub { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0; }
 
 /* ---- Submit form ---- */
@@ -102,13 +85,6 @@
   font-weight: 650;
   border: 0;
 }
-.v2-comm-submit-actions .primary {
-  background: linear-gradient(135deg, var(--purple), var(--purple2));
-  color: #fff;
-  font-weight: 700;
-  box-shadow: 0 4px 12px #6847ff20;
-}
-.v2-comm-submit-actions .primary:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
 .v2-comm-submit-actions .secondary {
   background: var(--panel);
   color: var(--ink);

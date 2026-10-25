@@ -259,13 +259,7 @@
 
 /* ---- Right rail: hints + meta ---- */
 .v2-challenge-rail { display: grid; gap: 12px; align-content: start; }
-.v2-rail-card {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  padding: 16px;
-  box-shadow: var(--shadow);
-}
+.v2-card.v2-rail-card { padding: 16px; border-radius: 12px; }
 .v2-rail-card h3 { margin: 0 0 10px; font-size: 13px; font-weight: 700; }
 .v2-rail-card .row {
   display: flex; align-items: center; justify-content: space-between;

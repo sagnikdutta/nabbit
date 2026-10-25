@@ -343,25 +343,17 @@
 }
 .v2-auth-forgot a:hover { text-decoration: underline; }
 
-.v2-auth-submit {
+/* Layers on top of the shared V2Button primary variant. */
+.v2-primary.v2-auth-submit {
+  display: flex;
   width: 100%;
   padding: 14px 18px;
-  border: 0;
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--purple), var(--purple2));
-  color: #fff;
-  font-weight: 700;
   font-size: 15px;
   box-shadow: 0 10px 24px rgba(104, 71, 255, 0.28);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   gap: 10px;
   margin-top: 6px;
-  transition: 0.15s;
 }
-.v2-auth-submit:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
-.v2-auth-submit:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .v2-auth-remember {
   display: flex;

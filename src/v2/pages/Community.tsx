@@ -4,6 +4,8 @@ import { api } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { V2Shell } from '../V2Shell';
 import { useV2Theme } from '../useTheme';
+import { useV2ShellStats } from '../useShellData';
+import { V2Button } from '../components/primitives';
 import './community.css';
 
 /*
@@ -37,6 +39,7 @@ type SubmitForm = {
 
 export default function V2CommunityPage() {
   const [theme, toggleTheme] = useV2Theme();
+  const shell = useV2ShellStats();
   const [signedIn, setSignedIn] = useState(() => Boolean(api.getCurrentUser()));
   const [rows, setRows] = useState<DraftRow[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -90,6 +93,10 @@ export default function V2CommunityPage() {
       theme={theme}
       onToggleTheme={toggleTheme}
       showSearch={false}
+      streak={shell.streak}
+      xp={shell.xp}
+      level={shell.level}
+      xpProgress={shell.xpProgress}
     >
       <div className="v2-community">
         <header className="v2-comm-header">
@@ -97,16 +104,16 @@ export default function V2CommunityPage() {
           {rows && <span className="count">{rows.length}</span>}
           <div className="spacer" />
           {signedIn ? (
-            <button
-              type="button"
-              className={`v2-comm-header-cta${showSubmit ? ' secondary' : ''}`}
+            <V2Button
+              size="lg"
+              variant={showSubmit ? 'secondary' : 'primary'}
               onClick={() => setShowSubmit(v => !v)}
             >
               {showSubmit ? <X size={13} /> : <Plus size={13} />}
               {showSubmit ? 'Cancel' : 'Submit a drill'}
-            </button>
+            </V2Button>
           ) : (
-            <a className="v2-comm-header-cta" href="/v2/auth">Sign in to submit</a>
+            <V2Button size="lg" href="/v2/auth">Sign in to submit</V2Button>
           )}
         </header>
 
@@ -247,9 +254,9 @@ function SubmitDraftForm({ onDone }: { onDone: () => void }) {
         />
       </div>
       <div className="v2-comm-submit-actions">
-        <button type="button" className="primary" disabled={submitting} onClick={submit}>
+        <V2Button size="lg" disabled={submitting} onClick={submit}>
           {submitting ? 'Submitting…' : 'Submit for review'}
-        </button>
+        </V2Button>
       </div>
     </section>
   );

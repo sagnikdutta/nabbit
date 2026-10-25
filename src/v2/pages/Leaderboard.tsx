@@ -4,6 +4,8 @@ import { api } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { V2Shell } from '../V2Shell';
 import { useV2Theme } from '../useTheme';
+import { useV2ShellStats } from '../useShellData';
+import { V2Button } from '../components/primitives';
 import './leaderboard.css';
 
 /*
@@ -25,6 +27,7 @@ interface Row {
 
 export default function V2LeaderboardPage() {
   const [theme, toggleTheme] = useV2Theme();
+  const shell = useV2ShellStats();
   const [isPro, setIsPro] = useState(false);
   const [rows, setRows] = useState<Row[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -88,6 +91,10 @@ export default function V2LeaderboardPage() {
       theme={theme}
       onToggleTheme={toggleTheme}
       showSearch={false}
+      streak={shell.streak}
+      xp={shell.xp}
+      level={shell.level}
+      xpProgress={shell.xpProgress}
     >
       <div className="v2-leaderboard">
         <header className="v2-lb-header">
@@ -116,9 +123,9 @@ export default function V2LeaderboardPage() {
                 </span>
               </div>
             </div>
-            <a className="cta" href="/v2/">
+            <V2Button size="lg" className="cta" href="/v2/">
               <Sparkles size={14} /> Unlock with Pro
-            </a>
+            </V2Button>
           </section>
         ) : err ? (
           <section className="v2-lb-error">{err}</section>

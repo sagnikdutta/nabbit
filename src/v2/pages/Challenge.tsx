@@ -21,6 +21,7 @@ import { Challenge, Video, AttemptInput, Confidence, ChallengeFormat, PRO_FORMAT
 import { availableFormats, grade } from '../../lib/grading';
 import { supabase } from '../../lib/supabase';
 import { V2Shell } from '../V2Shell';
+import { V2Button, V2Card } from '../components/primitives';
 import { useV2Theme } from '../useTheme';
 import './challenge.css';
 
@@ -49,6 +50,25 @@ const FORMAT_META: Record<
   'impostor':        { label: 'Impostor',     icon: Ghost,             hint: 'Pro — one of the fixes is a decoy.' },
   'red-herring':     { label: 'Red herring',  icon: Crosshair,         hint: 'Pro — locate the real bug through a decoy.' },
 };
+
+// Session combo survives the full-page navigations between drills (V1 kept it
+// in App state); sessionStorage scopes it to the tab.
+const COMBO_KEY = 'nabbit.v2.combo';
+function readSessionCombo(): number {
+  try {
+    const n = Number(window.sessionStorage.getItem(COMBO_KEY));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+function writeSessionCombo(n: number): void {
+  try {
+    window.sessionStorage.setItem(COMBO_KEY, String(Math.max(0, n)));
+  } catch {
+    /* storage unavailable — combo just resets per drill */
+  }
+}
 
 function readChallengeIdFromPath(): string | null {
   const m = window.location.pathname.match(/^\/v2\/challenge\/([^/?#]+)/);
@@ -248,7 +268,14 @@ export default function V2ChallengePage() {
     try {
       const currentUser = api.getCurrentUser();
       if (currentUser) {
-        const res = await api.submitAttempt(challenge.id, input, { confidence, timeMs, combo: 0 });
+        const isBoss = new URLSearchParams(window.location.search).get('boss') === '1';
+        const res = await api.submitAttempt(challenge.id, input, {
+          confidence,
+          timeMs,
+          combo: readSessionCombo(),
+          isBoss,
+        });
+        writeSessionCombo(res.comboAfter);
         setReveal({
           isCorrect: res.correct,
           explanation: res.explanation,
@@ -349,7 +376,7 @@ export default function V2ChallengePage() {
       <V2Shell activeNav="Practice" theme={theme} onToggleTheme={toggleTheme} showSearch={false} toast={toast}>
         <div className="v2-empty">
           Couldn't find that drill.{' '}
-          <a href="/v2/" style={{ color: 'var(--purple)', fontWeight: 650 }}>Back to dashboard</a>
+          <V2Button variant="link" href="/v2/">Back to dashboard</V2Button>
         </div>
       </V2Shell>
     );
@@ -459,13 +486,11 @@ export default function V2ChallengePage() {
                 )}
               </div>
               <div className="v2-reveal-actions">
-                <button className="v2-primary" onClick={handleNext}>
-                  Next drill <ArrowRight size={14} style={{ marginLeft: 4 }} />
-                </button>
-                <button className="v2-secondary" onClick={handleRetry}>Try again</button>
-                <a className="v2-secondary" href="/v2/" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
-                  Back to dashboard
-                </a>
+                <V2Button onClick={handleNext}>
+                  Next drill <ArrowRight size={14} />
+                </V2Button>
+                <V2Button variant="secondary" onClick={handleRetry}>Try again</V2Button>
+                <V2Button variant="secondary" href="/v2/">Back to dashboard</V2Button>
               </div>
             </div>
           )}
@@ -708,7 +733,7 @@ export default function V2ChallengePage() {
         </section>
 
         <aside className="v2-challenge-rail">
-          <div className="v2-rail-card">
+          <V2Card className="v2-rail-card">
             <h3>Drill info</h3>
             <div className="row"><span>Concept</span><strong>{challenge.concept}</strong></div>
             <div className="row"><span>Difficulty</span><strong>{challenge.difficulty}</strong></div>
@@ -716,9 +741,9 @@ export default function V2ChallengePage() {
             <div className="row"><span>From</span><strong>{video.channel}</strong></div>
             <div className="row"><span>Timestamp</span><strong>{challenge.timestampFormatted}</strong></div>
             <div className="row"><span>Format</span><strong>{FORMAT_META[format].label}</strong></div>
-          </div>
+          </V2Card>
 
-          <div className="v2-rail-card">
+          <V2Card className="v2-rail-card">
             <h3>Need a hint?</h3>
             {!showHint ? (
               <button type="button" className="v2-hint-btn" onClick={() => setShowHint(true)}>
@@ -736,9 +761,9 @@ export default function V2ChallengePage() {
                 )}
               </div>
             )}
-          </div>
+          </V2Card>
 
-          <div className="v2-rail-card">
+          <V2Card className="v2-rail-card">
             <h3>In this video</h3>
             {allInVideo.map(c => (
               <a
@@ -755,7 +780,7 @@ export default function V2ChallengePage() {
                 <strong style={{ color: 'inherit' }}>{c.concept}</strong>
               </a>
             ))}
-          </div>
+          </V2Card>
         </aside>
       </div>
     </V2Shell>
