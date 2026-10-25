@@ -62,6 +62,16 @@ export interface V2ShellProps {
   searchValue?: string;
   /** Full-page toast (optional). */
   toast?: string | null;
+  /**
+   * Topbar stats. Pages pass live values from the data layer; defaults keep
+   * the demo chips in place so Pages that haven't been wired up yet still
+   * render cleanly.
+   */
+  streak?: number;
+  xp?: number;
+  level?: number;
+  /** 0..1 — fraction of the current level the user has filled. */
+  xpProgress?: number;
 }
 
 export function V2Shell({
@@ -74,6 +84,13 @@ export function V2Shell({
   onSearchChange,
   searchValue = '',
   toast,
+  // Defaults keep the demo chips in place for pages (like today's Dashboard
+  // + Auth) that haven't been wired to live data yet; passing real values
+  // overrides them per-page.
+  streak = 12,
+  xp = 2450,
+  level = 4,
+  xpProgress = 0.61,
 }: V2ShellProps) {
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => api.getCurrentUser());
   useEffect(() => api.onAuthChange(setCurrentUser), []);
@@ -137,10 +154,17 @@ export function V2Shell({
               <div className="v2-shell-search v2-shell-search--placeholder" aria-hidden />
             )}
             <div className="v2-shell-spacer" />
-            <div className="v2-shell-stat">🔥 12 day streak</div>
-            <div className="v2-shell-stat">⚡ 2,450 XP</div>
-            <div className="v2-shell-level">
-              Level 4<span className="v2-shell-xpbar"><i /></span>
+            <div className="v2-shell-stat" title={`${streak} day streak`}>
+              🔥 {streak} day streak
+            </div>
+            <div className="v2-shell-stat" title={`${xp.toLocaleString()} XP`}>
+              ⚡ {xp.toLocaleString()} XP
+            </div>
+            <div className="v2-shell-level" title={`Level ${level}`}>
+              Level {level}
+              <span className="v2-shell-xpbar">
+                <i style={{ width: `${Math.round(Math.min(1, Math.max(0, xpProgress)) * 100)}%` }} />
+              </span>
             </div>
             <button
               className="v2-shell-icon-btn"

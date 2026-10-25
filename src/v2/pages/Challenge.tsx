@@ -17,7 +17,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { api } from '../../lib/api';
-import { Challenge, Video, AttemptInput, Confidence, ChallengeFormat, PRO_FORMATS } from '../../lib/types';
+import { Challenge, Video, AttemptInput, Confidence, ChallengeFormat, PRO_FORMATS, RecallStats } from '../../lib/types';
 import { availableFormats, grade } from '../../lib/grading';
 import { supabase } from '../../lib/supabase';
 import { V2Shell } from '../V2Shell';
@@ -74,6 +74,8 @@ export default function V2ChallengePage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [isPro, setIsPro] = useState(false);
+  const [stats, setStats] = useState<RecallStats | null>(null);
+  const [totalXp, setTotalXp] = useState(0);
 
   const [format, setFormat] = useState<ChallengeFormat>('spot-fix');
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -117,14 +119,20 @@ export default function V2ChallengePage() {
     return () => { alive = false; };
   }, []);
 
-  // Load challenge + video + sibling challenges.
+  // Load challenge + video + sibling challenges + topbar stats.
   useEffect(() => {
     let alive = true;
     const id = readChallengeIdFromPath();
     if (!id) { setLoading(false); setNotFound(true); return; }
     (async () => {
       try {
-        const videos = await api.getVideos();
+        const [videos, dash] = await Promise.all([api.getVideos(), api.getRecallDashboard()]);
+        if (alive) {
+          setStats(dash.stats);
+          setTotalXp((dash.allItems || []).reduce(
+            (n, r) => n + r.history.filter(a => a.correct).length * 100, 0,
+          ));
+        }
         for (const v of videos) {
           const list = await api.getVideoChallenges(v.id);
           const match = list.find(c => c.id === id);
@@ -350,6 +358,10 @@ export default function V2ChallengePage() {
   const buggySet = new Set(challenge.buggyLines ?? []);
   const codeLines = challenge.buggyCode.split('\n');
 
+  const shellStreak = stats?.currentStreak ?? 0;
+  const shellLevel = stats ? Math.max(1, Math.floor(stats.totalSolved / 10) + 1) : 1;
+  const shellXpProgress = stats ? (stats.totalSolved % 10) / 10 : 0;
+
   // Options rendered by MCQ-like formats.
   const optionList = (() => {
     const base = challenge.fixOptions.slice();
@@ -358,7 +370,17 @@ export default function V2ChallengePage() {
   })();
 
   return (
-    <V2Shell activeNav="Practice" theme={theme} onToggleTheme={toggleTheme} showSearch={false} toast={toast}>
+    <V2Shell
+      activeNav="Practice"
+      theme={theme}
+      onToggleTheme={toggleTheme}
+      showSearch={false}
+      toast={toast}
+      streak={shellStreak}
+      xp={totalXp}
+      level={shellLevel}
+      xpProgress={shellXpProgress}
+    >
       <button
         type="button"
         className="v2-challenge-back"

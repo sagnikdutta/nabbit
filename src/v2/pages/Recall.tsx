@@ -152,7 +152,17 @@ export default function V2RecallPage() {
   })();
 
   return (
-    <V2Shell activeNav="Recall" theme={theme} onToggleTheme={toggleTheme} showSearch={false} toast={toast}>
+    <V2Shell
+      activeNav="Recall"
+      theme={theme}
+      onToggleTheme={toggleTheme}
+      showSearch={false}
+      toast={toast}
+      streak={stats.currentStreak || 0}
+      xp={allItems.reduce((n, i) => n + i.history.filter(a => a.correct).length * 100, 0)}
+      level={Math.max(1, Math.floor(stats.totalSolved / 10) + 1)}
+      xpProgress={(stats.totalSolved % 10) / 10}
+    >
       <div className="v2-recall">
         {offsetDays !== 0 && (
           <div className="v2-timetravel" role="status">

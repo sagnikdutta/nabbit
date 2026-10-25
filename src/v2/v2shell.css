@@ -103,7 +103,7 @@
   background: var(--soft); overflow: hidden;
   display: inline-block; vertical-align: middle; margin-left: 8px;
 }
-.v2-shell-xpbar i { display: block; width: 61%; height: 100%; background: var(--purple); border-radius: 9px; }
+.v2-shell-xpbar i { display: block; width: 0%; height: 100%; background: var(--purple); border-radius: 9px; transition: width 0.3s; }
 
 .v2-shell-icon-btn {
   width: 36px; height: 36px;
