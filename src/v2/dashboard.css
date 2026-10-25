@@ -293,3 +293,10 @@
 .v2-mastery-row div span { font-size: 10px; color: var(--muted); }
 .v2-mastery-row b { font-size: 13px; font-variant-numeric: tabular-nums; }
 .v2-bucket { font-size: 10px; font-weight: 650; padding: 1px 6px; border: 1px solid; border-radius: 5px; }
+
+/* ---- Hero importer: in-flight + error state ---- */
+.v2-hero-status { display: grid; gap: 6px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+.v2-hero-error {
+  margin-top: 10px; padding: 9px 12px; border-radius: 9px; font-size: 12px;
+  border: 1px solid #dc262655; background: #dc26260f; color: #b91c1c;
+}

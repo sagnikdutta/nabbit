@@ -46,6 +46,16 @@ a.v2-primary, a.v2-secondary, a.v2-link-btn { text-align: center; text-decoratio
   background: linear-gradient(90deg, var(--purple), #9a80ff);
 }
 
+/* ---- Indeterminate bar (in-flight work with no progress events) ---- */
+.v2-import-bar { height: 6px; border-radius: 6px; background: var(--soft); overflow: hidden; position: relative; }
+.v2-import-bar::after {
+  content: ''; position: absolute; inset: 0 auto 0 0; width: 35%; border-radius: 6px;
+  background: linear-gradient(90deg, var(--purple), #9a80ff);
+  animation: v2-import-slide 1.2s ease-in-out infinite;
+}
+@keyframes v2-import-slide { 0% { left: -35%; } 100% { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .v2-import-bar::after { animation: none; width: 100%; opacity: 0.5; } }
+
 /* ---- Panel / Card ---- */
 .v2-panel {
   border: 1px solid var(--line); background: var(--panel);

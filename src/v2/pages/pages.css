@@ -27,14 +27,6 @@
 .v2-import-form input:focus { outline: 2px solid var(--purple); outline-offset: 1px; }
 .v2-import-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .v2-import-status { display: grid; gap: 8px; }
-.v2-import-bar { height: 6px; border-radius: 6px; background: var(--soft); overflow: hidden; position: relative; }
-.v2-import-bar::after {
-  content: ''; position: absolute; inset: 0 auto 0 0; width: 35%; border-radius: 6px;
-  background: linear-gradient(90deg, var(--purple), #9a80ff);
-  animation: v2-import-slide 1.2s ease-in-out infinite;
-}
-@keyframes v2-import-slide { 0% { left: -35%; } 100% { left: 100%; } }
-@media (prefers-reduced-motion: reduce) { .v2-import-bar::after { animation: none; width: 100%; opacity: 0.5; } }
 .v2-import-error {
   border: 1px solid #dc262655; background: #dc26260f; color: #b91c1c;
   border-radius: 10px; padding: 12px 14px; font-size: 13px; display: grid; gap: 4px;

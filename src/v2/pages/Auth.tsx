@@ -29,8 +29,8 @@ import { UserAccount } from '../../lib/types';
  * New in V2:
  *   - Two-column layout per the mockup (left hero + features, right card)
  *   - Topbar with brand, nav links, theme toggle, mode-switch CTA
- *   - Google / GitHub OAuth placeholders (toast "coming soon" — V1 has no
- *     OAuth today; adding provider wiring is out of scope for this PR)
+ *   - Google / GitHub OAuth via api.signInWithOAuth (Supabase; the providers
+ *     must be enabled in the Supabase dashboard — see the api comment)
  *
  * On success the user lands on /v2/ (the V2 dashboard).
  */
@@ -72,6 +72,7 @@ export default function V2AuthPage({
   const [keepSignedIn, setKeepSignedIn] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [generalError, setGeneralError] = useState<string | null>(null);
+  const [oauthBusy, setOauthBusy] = useState<'google' | 'github' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const formId = useId();
@@ -125,6 +126,17 @@ export default function V2AuthPage({
         );
     } else {
       setPhoneNumber(raw);
+    }
+  };
+
+  const handleOAuth = async (provider: 'google' | 'github') => {
+    setOauthBusy(provider);
+    setGeneralError(null);
+    const res = await api.signInWithOAuth(provider);
+    // On success the browser is already navigating to the provider.
+    if (!res.ok) {
+      setOauthBusy(null);
+      setGeneralError(res.message || 'Could not start social sign-in.');
     }
   };
 
@@ -308,16 +320,18 @@ export default function V2AuthPage({
             <button
               type="button"
               className="v2-oauth-btn"
-              onClick={() => showToast('Google sign-in is coming soon.')}
+              disabled={oauthBusy !== null}
+              onClick={() => handleOAuth('google')}
             >
-              <GoogleGlyph /> Continue with Google
+              <GoogleGlyph /> {oauthBusy === 'google' ? 'Redirecting…' : 'Continue with Google'}
             </button>
             <button
               type="button"
               className="v2-oauth-btn"
-              onClick={() => showToast('GitHub sign-in is coming soon.')}
+              disabled={oauthBusy !== null}
+              onClick={() => handleOAuth('github')}
             >
-              <GitHubGlyph /> Continue with GitHub
+              <GitHubGlyph /> {oauthBusy === 'github' ? 'Redirecting…' : 'Continue with GitHub'}
             </button>
           </div>
 

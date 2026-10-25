@@ -463,6 +463,36 @@ export const api = {
     localStore.setCurrentUser(null);
   },
 
+  /**
+   * Social sign-in. Redirects the browser to the provider; on return
+   * supabase-js (detectSessionInUrl) picks the session up and the existing
+   * onAuthStateChange handler signs the user in. The provider must be enabled
+   * in the Supabase dashboard (Authentication → Providers) with
+   * `<origin>/v2/` in the redirect allow-list. Resolves only on failure —
+   * on success the page navigates away.
+   */
+  async signInWithOAuth(provider: 'google' | 'github'): Promise<{ ok: boolean; message?: string }> {
+    if (!isSupabaseConfigured() || !supabase) {
+      return { ok: false, message: 'Social sign-in needs an online account. Use email and password for now.' };
+    }
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: `${window.location.origin}/v2/` },
+      });
+      if (error) {
+        const m = (error.message || '').toLowerCase();
+        if (/provider.*(not enabled|unsupported)|unsupported provider/.test(m)) {
+          return { ok: false, message: `${provider === 'google' ? 'Google' : 'GitHub'} sign-in isn't enabled yet.` };
+        }
+        return { ok: false, message: 'Could not start social sign-in. Please try again.' };
+      }
+      return { ok: true };
+    } catch {
+      return { ok: false, message: 'Could not start social sign-in. Please try again.' };
+    }
+  },
+
   async signUp(
     email: string,
     password: string,

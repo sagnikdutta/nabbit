@@ -253,6 +253,7 @@
   transition: 0.15s;
 }
 .v2-oauth-btn:hover { background: var(--soft); border-color: var(--purple-border); }
+.v2-oauth-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .v2-oauth-btn img,
 .v2-oauth-btn svg { width: 20px; height: 20px; }
 

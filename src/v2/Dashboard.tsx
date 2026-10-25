@@ -104,6 +104,8 @@ export default function V2Dashboard() {
   const [goals, setGoals] = useState({ drills: true, debug: true, recall: false, streak: false });
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [importing, setImporting] = useState(false);
+  const [importElapsed, setImportElapsed] = useState(0);
+  const [importError, setImportError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalTitle, setModalTitle] = useState('Ready to practise?');
   const [modalBody, setModalBody] = useState('Choose a challenge to begin.');
@@ -271,14 +273,19 @@ export default function V2Dashboard() {
       return;
     }
     setImporting(true);
+    setImportError(null);
+    setImportElapsed(0);
+    const started = Date.now();
+    const tick = window.setInterval(() => setImportElapsed(Math.floor((Date.now() - started) / 1000)), 500);
     try {
       const result = await api.generateFromYouTubeUrl(youtubeUrl.trim());
       await loadAll();
       setYoutubeUrl('');
       showToast(`Added "${result.video.title}" to your library.`);
     } catch (err: any) {
-      showToast(err?.message || 'Could not generate drills from that URL.');
+      setImportError(err?.message || 'Could not generate drills from that URL.');
     } finally {
+      window.clearInterval(tick);
       setImporting(false);
     }
   };
@@ -445,13 +452,24 @@ export default function V2Dashboard() {
               placeholder="Paste YouTube video link here..."
               aria-label="YouTube video URL"
               value={youtubeUrl}
-              onChange={e => setYoutubeUrl(e.target.value)}
+              onChange={e => { setYoutubeUrl(e.target.value); if (importError) setImportError(null); }}
               disabled={importing}
             />
             <button className="v2-primary" type="submit" disabled={importing}>
-              {importing ? 'Generating…' : (<>Create Drills&nbsp;→</>)}
+              {importing ? `Generating… ${importElapsed}s` : (<>Create Drills&nbsp;→</>)}
             </button>
           </form>
+          {importing && (
+            <div className="v2-hero-status" role="status" aria-live="polite">
+              <div className="v2-import-bar" />
+              <span>Building drills — this can take up to 30 seconds with AI generation.</span>
+            </div>
+          )}
+          {importError && !importing && (
+            <div className="v2-hero-error" role="alert">
+              <strong>Import failed.</strong> {importError}
+            </div>
+          )}
           <button
             className="v2-example"
             onClick={() => {
