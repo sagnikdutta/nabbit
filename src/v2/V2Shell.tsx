@@ -40,17 +40,17 @@ interface NavLink {
 
 const NAV_LINKS: NavLink[] = [
   { key: 'Home',          icon: '⌂', href: '/v2/' },
-  { key: 'Import Video',  icon: '▣', href: '/v2/' }, // Dashboard owns the import form
-  { key: 'My Library',    icon: '▤', href: '/v2/' },
+  { key: 'Import Video',  icon: '▣', href: '/v2/import' },
+  { key: 'My Library',    icon: '▤', href: '/v2/library' },
   { key: 'Practice',      icon: '♧', href: '/v2/challenge/react-state-batching' },
   { key: 'Recall',        icon: '◴', href: '/v2/recall' },
   { key: 'Leaderboard',   icon: '🏆', href: '/v2/leaderboard' },
   { key: 'Community',     icon: '👥', href: '/v2/community' },
-  { key: 'Progress',      icon: '📊', href: '/v2/' },
+  { key: 'Progress',      icon: '📊', href: '/v2/progress' },
 ];
 const NAV_SECONDARY: NavLink[] = [
-  { key: 'Achievements', icon: '★',       href: '/v2/' },
-  { key: 'Settings',     icon: '⚙',       href: '/v2/' },
+  { key: 'Achievements', icon: '★',       href: '/v2/achievements' },
+  { key: 'Settings',     icon: '⚙',       href: '/v2/settings' },
 ];
 
 export interface V2ShellProps {

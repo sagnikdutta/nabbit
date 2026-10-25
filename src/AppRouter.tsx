@@ -28,8 +28,16 @@ const V2Challenge = lazy(() => import('./v2/pages/Challenge'));
 const V2Recall = lazy(() => import('./v2/pages/Recall'));
 const V2Leaderboard = lazy(() => import('./v2/pages/Leaderboard'));
 const V2Community = lazy(() => import('./v2/pages/Community'));
+const V2Import = lazy(() => import('./v2/pages/Import'));
+const V2Library = lazy(() => import('./v2/pages/Library'));
+const V2Progress = lazy(() => import('./v2/pages/Progress'));
+const V2ComingSoon = lazy(() => import('./v2/pages/ComingSoon'));
 
 type Choice =
+  | { kind: 'v2-import' }
+  | { kind: 'v2-library' }
+  | { kind: 'v2-progress' }
+  | { kind: 'v2-soon'; page: 'Achievements' | 'Settings' }
   | { kind: 'v1' }
   | { kind: 'v2-dashboard' }
   | { kind: 'v2-auth' }
@@ -45,6 +53,12 @@ function pickFromPath(pathname: string): Choice {
   if (pathname === '/v2/recall' || pathname === '/v2/recall/') return { kind: 'v2-recall' };
   if (pathname === '/v2/leaderboard' || pathname === '/v2/leaderboard/') return { kind: 'v2-leaderboard' };
   if (pathname === '/v2/community' || pathname === '/v2/community/') return { kind: 'v2-community' };
+  const p = pathname.replace(/\/$/, '');
+  if (p === '/v2/import') return { kind: 'v2-import' };
+  if (p === '/v2/library') return { kind: 'v2-library' };
+  if (p === '/v2/progress') return { kind: 'v2-progress' };
+  if (p === '/v2/achievements') return { kind: 'v2-soon', page: 'Achievements' };
+  if (p === '/v2/settings') return { kind: 'v2-soon', page: 'Settings' };
   if (/^\/v2\/challenge\/[^/]+\/?$/.test(pathname)) return { kind: 'v2-challenge' };
   if (pathname === '/v1' || pathname.startsWith('/v1/')) return { kind: 'v1' };
   if (pathname.startsWith('/v2/')) return { kind: 'v1' };
@@ -128,6 +142,17 @@ export default function AppRouter() {
     return (
       <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading community…</div>}>
         <V2Community />
+      </Suspense>
+    );
+  }
+
+  if (choice.kind === 'v2-import' || choice.kind === 'v2-library' || choice.kind === 'v2-progress' || choice.kind === 'v2-soon') {
+    return (
+      <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading…</div>}>
+        {choice.kind === 'v2-import' && <V2Import />}
+        {choice.kind === 'v2-library' && <V2Library />}
+        {choice.kind === 'v2-progress' && <V2Progress />}
+        {choice.kind === 'v2-soon' && <V2ComingSoon page={choice.page} />}
       </Suspense>
     );
   }

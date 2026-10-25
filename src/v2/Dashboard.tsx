@@ -561,7 +561,7 @@ export default function V2Dashboard() {
               </button>
             ))}
           </div>
-          <a className="v2-link-btn" href="/v2/">View All →</a>
+          <a className="v2-link-btn" href="/v2/library">View All →</a>
         </div>
         {loading ? (
           <div className="v2-library-empty">Loading your library…</div>

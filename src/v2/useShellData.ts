@@ -16,6 +16,18 @@ export interface ShellStats {
 
 const ZERO_STATS: ShellStats = { streak: 0, xp: 0, level: 1, xpProgress: 0 };
 
+/** Streak / XP / level for the topbar from a getRecallDashboard() result. */
+export function shellStatsFromDashboard(dash: Awaited<ReturnType<typeof api.getRecallDashboard>>): ShellStats {
+  const items = (dash.allItems || []) as Array<{ history: Array<{ correct: boolean }> }>;
+  const solved = dash.stats?.totalSolved || 0;
+  return {
+    streak: dash.stats?.currentStreak || 0,
+    xp: items.reduce((n, i) => n + i.history.filter(a => a.correct).length * 100, 0),
+    level: Math.max(1, Math.floor(solved / 10) + 1),
+    xpProgress: (solved % 10) / 10,
+  };
+}
+
 /** Live streak / XP / level for the V2 topbar, derived from the recall dashboard. */
 export function useV2ShellStats(): ShellStats {
   const [stats, setStats] = useState<ShellStats>(ZERO_STATS);
@@ -25,14 +37,7 @@ export function useV2ShellStats(): ShellStats {
       try {
         const dash = await api.getRecallDashboard();
         if (!alive) return;
-        const items = (dash.allItems || []) as Array<{ history: Array<{ correct: boolean }> }>;
-        const solved = dash.stats?.totalSolved || 0;
-        setStats({
-          streak: dash.stats?.currentStreak || 0,
-          xp: items.reduce((n, i) => n + i.history.filter(a => a.correct).length * 100, 0),
-          level: Math.max(1, Math.floor(solved / 10) + 1),
-          xpProgress: (solved % 10) / 10,
-        });
+        setStats(shellStatsFromDashboard(dash));
       } catch {
         /* keep zeros */
       }
