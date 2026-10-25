@@ -11,8 +11,9 @@ import type { Challenge, Video } from '../../src/lib/types.js';
 
 // The model this endpoint has always used; override per environment with GEMINI_MODEL.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-// Used when the primary model is overloaded (503) or rate-limited (429).
-const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash';
+// Optional second model for when the primary is overloaded. No default: older models
+// (e.g. gemini-2.5-flash) are no longer available to new API keys and return 404.
+const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || '';
 const isProduction = process.env.NODE_ENV === 'production';
 
 // Vercel kills the function at maxDuration (60s in vercel.json); stop retrying before that.
@@ -29,18 +30,26 @@ function isTransient(err: unknown): boolean {
  * Non-transient errors (bad key, invalid request) are thrown immediately.
  */
 async function withModelFallback<T>(startedAt: number, call: (model: string) => Promise<T>): Promise<T> {
+  // Primary model up to 4 times (backoff 1.5s, 3s, 4.5s); if a fallback model is
+  // configured it takes the last two attempts.
   const models = GEMINI_FALLBACK_MODEL && GEMINI_FALLBACK_MODEL !== GEMINI_MODEL
     ? [GEMINI_MODEL, GEMINI_MODEL, GEMINI_FALLBACK_MODEL, GEMINI_FALLBACK_MODEL]
-    : [GEMINI_MODEL, GEMINI_MODEL];
+    : [GEMINI_MODEL, GEMINI_MODEL, GEMINI_MODEL, GEMINI_MODEL];
+  let firstTransient: unknown;
   let lastErr: unknown;
   for (let attempt = 0; attempt < models.length; attempt++) {
     try {
       return await call(models[attempt]);
     } catch (err) {
       lastErr = err;
-      if (!isTransient(err) || Date.now() - startedAt > RETRY_DEADLINE_MS) throw err;
+      const transient = isTransient(err);
+      if (transient && firstTransient === undefined) firstTransient = err;
+      if (!transient || Date.now() - startedAt > RETRY_DEADLINE_MS) {
+        // Report the overload that started the retries, not a later fallback error.
+        throw transient ? err : (firstTransient ?? err);
+      }
       console.warn(`[Nabbit] Gemini ${models[attempt]} transient failure (attempt ${attempt + 1}/${models.length}), retrying`);
-      await new Promise(r => setTimeout(r, 1200 * (attempt + 1)));
+      await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
     }
   }
   throw lastErr;
