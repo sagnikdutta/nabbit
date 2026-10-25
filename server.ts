@@ -7,7 +7,10 @@ import { createServer as createViteServer } from 'vite';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI, Type } from '@google/genai';
 import { CURATED_CHALLENGES, CURATED_VIDEOS } from './src/content/data.ts';
-import { extractYouTubeVideoId, generateFallbackPastedPack } from './src/lib/youtube.ts';
+import { extractYouTubeVideoId } from './src/lib/youtube.ts';
+
+// Same model the backfill script uses; override per environment with GEMINI_MODEL.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 import { Challenge, Video } from './src/lib/types.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -405,8 +408,16 @@ async function startServer() {
       const youtubeId = parsed.videoId;
       const apiKey = process.env.GEMINI_API_KEY;
 
-      // When GEMINI_API_KEY is available, use gemini-3.8-flash for code review drill synthesis
-      if (apiKey) {
+      // No silent template fallback: a canned pack labelled as this video is
+      // worse than an error. Surface the problem so the client can show it.
+      if (!apiKey) {
+        return res.status(503).json({
+          error: 'AI drill generation is not configured on this server (missing GEMINI_API_KEY).',
+          code: 'ai_unavailable',
+        });
+      }
+
+      {
         try {
           const ai = new GoogleGenAI({
             apiKey,
@@ -417,28 +428,29 @@ async function startServer() {
             },
           });
 
-          // Step 1: Ground video context with Google Search to identify real title & tech stack
-          let searchContext = '';
+          // Ground on the real video: oEmbed gives the true title/channel (no API
+          // key needed) and Gemini reads the video itself via its YouTube URL.
+          const watchUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
+          let oembedTitle = '';
+          let oembedChannel = '';
           try {
-            const searchRes = await ai.models.generateContent({
-              model: 'gemini-3.8-flash',
-              contents: `Search Google for YouTube video ID "${youtubeId}" "${topicHint || ''}". What is the exact tutorial title, channel name, technology or cloud service taught (e.g. AWS IAM, S3, Terraform, Docker, Python, React), and key concepts? Keep concise in 2 sentences.`,
-              config: {
-                tools: [{ googleSearch: {} }],
-              },
-            });
-            if (searchRes.text) {
-              searchContext = searchRes.text;
+            const o = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(watchUrl)}&format=json`);
+            if (o.ok) {
+              const j: any = await o.json();
+              oembedTitle = typeof j.title === 'string' ? j.title : '';
+              oembedChannel = typeof j.author_name === 'string' ? j.author_name : '';
             }
-          } catch (searchErr) {
-            console.warn('[Nabbit] Search grounding notice:', searchErr);
+          } catch (oembedErr) {
+            console.warn('[Nabbit] oEmbed lookup notice:', oembedErr);
           }
 
           const prompt = `You are an expert software engineer and code reviewer creating a bug-hunt judgment drill for "Nabbit".
-A developer wants to practice code-review on this YouTube tutorial:
+A developer wants to practice code-review on the attached YouTube tutorial.
 - YouTube Video ID: ${youtubeId}
-- Topic or Hint: "${topicHint || 'Determine from the tutorial context'}"
-${searchContext ? `- Grounded Tutorial Search Context: "${searchContext}"` : ''}
+${oembedTitle ? `- Video title: "${oembedTitle}"${oembedChannel ? ` by ${oembedChannel}` : ''}
+` : ''}- Topic or Hint: "${topicHint || 'Determine from the video itself'}"
+
+Base every challenge on concepts actually taught in THIS video. Do not invent generic topics; if you cannot determine what the video teaches, return an empty challenges array.
 
 CRITICAL DOMAIN RULES:
 1. If the video is about AWS, Cloud, or Cloud Security (IAM, S3, EC2, Lambda, VPC):
@@ -466,8 +478,8 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
   - inspectionClue: A specific pointer directing the reviewer's attention to the problematic property or line.`;
 
           const response = await ai.models.generateContent({
-            model: 'gemini-3.8-flash',
-            contents: prompt,
+            model: GEMINI_MODEL,
+            contents: [{ role: 'user', parts: [{ fileData: { fileUri: watchUrl } }, { text: prompt }] }],
             config: {
               responseMimeType: 'application/json',
               responseSchema: {
@@ -535,11 +547,25 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
           const dataText = response.text;
           if (dataText) {
             const parsedData = JSON.parse(dataText);
+            const validChallenges = (Array.isArray(parsedData.challenges) ? parsedData.challenges : []).filter((c: any) => {
+              if (!c || typeof c.buggyCode !== 'string' || !c.buggyCode.trim()) return false;
+              if (!Array.isArray(c.fixOptions) || c.fixOptions.length < 2) return false;
+              if (!Number.isInteger(c.correctOption) || c.correctOption < 0 || c.correctOption >= c.fixOptions.length) return false;
+              const lineCount = c.buggyCode.split('\n').length;
+              return Array.isArray(c.buggyLines) && c.buggyLines.length > 0 && c.buggyLines.every((n: any) => Number.isInteger(n) && n >= 1 && n <= lineCount);
+            });
+            if (validChallenges.length === 0) {
+              return res.status(422).json({
+                error: "Couldn't build reliable drills from this video. Try another video or add a topic hint.",
+                code: 'no_valid_drills',
+              });
+            }
+            parsedData.challenges = validChallenges;
             const customId = `custom-${youtubeId}-${Date.now().toString(36)}`;
             const video: Video = {
               id: customId,
-              title: parsedData.title || (topicHint ? topicHint : 'Tutorial Drill'),
-              channel: parsedData.channel || 'Dev Tutorial',
+              title: oembedTitle || parsedData.title || (topicHint ? topicHint : 'Tutorial Drill'),
+              channel: oembedChannel || parsedData.channel || 'Dev Tutorial',
               stack: parsedData.stack || 'Cloud / Software Engineering',
               youtubeId,
               duration: parsedData.duration || '20m',
@@ -578,13 +604,15 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
             return res.json({ video, challenges, source: 'gemini' });
           }
         } catch (geminiErr) {
-          console.warn('[Nabbit] Gemini generation error, using fallback template:', geminiErr);
+          console.error('[Nabbit] Gemini generation error:', geminiErr);
+          return res.status(502).json({
+            error: "The AI service couldn't generate drills for this video. Please try again, or try a different video.",
+            code: 'ai_failed',
+          });
         }
       }
 
-      // High-quality smart template fallback
-      const fallback = generateFallbackPastedPack(youtubeId, topicHint);
-      return res.json({ ...fallback, source: 'template' });
+      return res.status(502).json({ error: 'The AI service returned nothing for this video.', code: 'ai_failed' });
     } catch (err: any) {
       console.error('[Nabbit] Failed to generate drill:', err);
       res.status(500).json({ error: err.message || 'Server error generating challenge' });

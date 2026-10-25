@@ -9,9 +9,9 @@ import './pages.css';
 
 /*
  * V2 Import Video — dedicated importer. Same backend as the Dashboard hero
- * (api.generateFromYouTubeUrl: Gemini on the server when configured, template
- * fallback otherwise), but with in-flight status, error detail and a result
- * summary instead of a toast. The API has no progress events, so the in-flight
+ * (api.generateFromYouTubeUrl: Gemini reads the video on the server; there is no
+ * template fallback, failures are shown as errors), but with in-flight status,
+ * error detail and a result summary instead of a toast. The API has no progress events, so the in-flight
  * state is an indeterminate bar plus an elapsed-seconds counter.
  */
 
@@ -121,8 +121,7 @@ export default function V2ImportPage() {
               <strong>Generating drills… {elapsed}s</strong>
               <div className="v2-import-bar" />
               <span className="v2-small v2-muted">
-                This can take 10–30 seconds when AI generation is on. Falls back to a template pack if
-                the server can't reach the video.
+                This can take 10–30 seconds when AI generation is on. 
               </span>
             </div>
           </V2Panel>
@@ -140,7 +139,7 @@ export default function V2ImportPage() {
             <div className="v2-import-result">
               <span className="v2-small v2-muted">
                 {result.challenges.length} drill{result.challenges.length === 1 ? '' : 's'} ·{' '}
-                {result.source === 'template' ? 'template fallback (no AI generation available)' : `source: ${result.source}`}
+                generated from the video by AI
               </span>
               <ul>
                 {result.challenges.map(c => <li key={c.id}>{c.concept}</li>)}

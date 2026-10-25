@@ -262,14 +262,19 @@
 .v2-card.v2-rail-card { padding: 16px; border-radius: 12px; }
 .v2-rail-card h3 { margin: 0 0 10px; font-size: 13px; font-weight: 700; }
 .v2-rail-card .row {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
   padding: 7px 0;
   border-top: 1px dashed var(--line);
   font-size: 12px;
   color: var(--muted);
 }
 .v2-rail-card .row:first-of-type { border-top: 0; }
-.v2-rail-card .row strong { color: var(--ink); font-weight: 650; }
+.v2-rail-card .row > span:first-child { flex: none; }
+.v2-rail-card .row strong { color: var(--ink); font-weight: 650; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+/* "In this video" list: timestamp column + left-aligned title. */
+.v2-rail-card .row.video-row { align-items: flex-start; }
+.v2-rail-card .row.video-row > span:first-child { min-width: 44px; font-variant-numeric: tabular-nums; }
+.v2-rail-card .row.video-row strong { flex: 1; text-align: left; line-height: 1.35; }
 
 .v2-hint-btn {
   display: block; width: 100%;

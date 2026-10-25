@@ -15,7 +15,7 @@ import { normalizeChallenges, normalizeChallenge } from '../content/normalize';
 import { calculateRecallSchedule, computeStats, getSimulatedNow } from './recall';
 import { grade, computeScore } from './grading';
 import { getFreezeState, markFreezeUsed } from './streak-freeze';
-import { extractYouTubeVideoId, generateFallbackPastedPack } from './youtube';
+import { extractYouTubeVideoId } from './youtube';
 import { supabase, isSupabaseConfigured, mapSupabaseUser } from './supabase';
 import { supabaseStore } from './supabase-store';
 
@@ -937,30 +937,31 @@ export const api = {
   },
 
   async generateFromYouTubeUrl(url: string, topicHint?: string): Promise<{ video: Video; challenges: Challenge[]; source: string }> {
+    // Validate locally first so a typo never costs a network round-trip.
+    if (!extractYouTubeVideoId(url)) {
+      throw new Error('Please enter a valid YouTube video URL or ID');
+    }
+    // No canned-template fallback: drills that aren't about this video are worse
+    // than a clear error. The server returns { error, code } on any failure.
+    let res: Response;
     try {
-      const res = await fetch('/api/videos/generate-from-url', {
+      res = await fetch('/api/videos/generate-from-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, topicHint }),
       });
-      const contentType = res.headers.get('content-type') || '';
-      if (res.ok && contentType.includes('application/json')) {
-        const data = await res.json();
-        if (data.video && Array.isArray(data.challenges) && data.challenges.length > 0) {
-          localStore.addCustomPack(data.video, data.challenges);
-          return data;
-        }
-      }
-    } catch (err) {
-      console.warn('Network generate failed, using local fallback:', err);
+    } catch {
+      throw new Error("Couldn't reach the Nabbit server. Check your connection and try again.");
     }
-
-    const parsed = extractYouTubeVideoId(url);
-    if (!parsed) {
-      throw new Error('Please enter a valid YouTube video URL or ID');
+    const isJson = (res.headers.get('content-type') || '').includes('application/json');
+    const data = isJson ? await res.json().catch(() => null) : null;
+    if (!res.ok || !data) {
+      throw new Error(data?.error || 'Importing videos needs the Nabbit server, which is not available here.');
     }
-    const fallback = generateFallbackPastedPack(parsed.videoId, topicHint);
-    localStore.addCustomPack(fallback.video, fallback.challenges);
-    return { ...fallback, source: 'template' };
+    if (!data.video || !Array.isArray(data.challenges) || data.challenges.length === 0) {
+      throw new Error("Couldn't build drills from this video. Try another video.");
+    }
+    localStore.addCustomPack(data.video, data.challenges);
+    return data;
   },
 };

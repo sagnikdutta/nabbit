@@ -769,7 +769,7 @@ export default function V2ChallengePage() {
               <a
                 key={c.id}
                 href={`/v2/challenge/${encodeURIComponent(c.id)}`}
-                className="row"
+                className="row video-row"
                 style={{
                   textDecoration: 'none',
                   color: c.id === challenge.id ? 'var(--purple)' : undefined,

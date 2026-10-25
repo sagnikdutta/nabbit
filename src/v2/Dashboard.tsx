@@ -21,9 +21,8 @@ import './dashboard.css';
  *   - api.getRecallDashboard()       → recall queue + progress metrics +
  *                                      topbar streak/XP
  *   - api.getVideoChallenges(id)     → progress-per-video + tag chips
- *   - api.generateFromYouTubeUrl(url) → hero YouTube importer (Gemini on
- *                                       the server when GEMINI_API_KEY is set,
- *                                       template fallback otherwise)
+ *   - api.generateFromYouTubeUrl(url) → hero YouTube importer (Gemini reads
+ *                                       the video on the server; errors are shown inline)
  *
  * Signed-out visitors see the same shell — Nabbit's progress lives in the
  * browser's localStorage so there's no need to gate the view. A fresh

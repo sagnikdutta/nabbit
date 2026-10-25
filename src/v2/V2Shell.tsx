@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { UserAccount } from '../lib/types';
 import { V2Toast } from './components/primitives';
@@ -100,6 +100,23 @@ export function V2Shell({
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => api.getCurrentUser());
   useEffect(() => api.onAuthChange(setCurrentUser), []);
 
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+  const signOut = () => { api.signOut().finally(() => window.location.assign('/v2/auth')); };
+
   return (
     <div className="v2-root v2-shell-root" data-theme={theme}>
       <div className="v2-shell-app">
@@ -180,19 +197,30 @@ export function V2Shell({
               {theme === 'dark' ? '☀' : '☾'}
             </button>
             {currentUser ? (
-              <>
-                <div className="v2-shell-avatar" title={currentUser.email}>
-                  {(currentUser.email?.[0] || 'U').toUpperCase()}
-                </div>
+              <div className="v2-account" ref={menuRef}>
                 <button
-                  className="v2-shell-icon-btn"
-                  aria-label="Sign out"
-                  title="Sign out"
-                  onClick={() => { api.signOut().finally(() => window.location.assign('/v2/auth')); }}
+                  type="button"
+                  className="v2-shell-avatar v2-account-btn"
+                  aria-label="Account menu"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  onClick={() => setMenuOpen(o => !o)}
                 >
-                  ⌄
+                  {(currentUser.email?.[0] || 'U').toUpperCase()}
                 </button>
-              </>
+                {menuOpen && (
+                  <div className="v2-account-menu" role="menu">
+                    <div className="v2-account-id">
+                      <span className="label">Signed in as</span>
+                      <strong title={currentUser.email}>{currentUser.email || 'Your account'}</strong>
+                    </div>
+                    <a role="menuitem" href="/v2/settings">Settings</a>
+                    <button type="button" role="menuitem" className="danger" onClick={signOut}>
+                      Sign out
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : (
               <a className="v2-shell-signin" href="/v2/auth">Sign in</a>
             )}
