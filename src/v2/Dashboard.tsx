@@ -101,7 +101,6 @@ export default function V2Dashboard() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('Recent');
   const [search, setSearch] = useState('');
-  const [goals, setGoals] = useState({ drills: true, debug: true, recall: false, streak: false });
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [importing, setImporting] = useState(false);
   const [importElapsed, setImportElapsed] = useState(0);
@@ -244,6 +243,30 @@ export default function V2Dashboard() {
   const xpInLevel = stats.totalSolved % 10;
   const xpProgress = xpInLevel / 10;
 
+  // ----- Today's goals: derived from today's real attempts -----
+  const goalRows = useMemo(() => {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const since = startOfDay.getTime();
+    let drillsToday = 0;
+    let correctToday = 0;
+    let reviewsToday = 0;
+    for (const item of recallItems) {
+      for (const a of item.history) {
+        if (a.at < since) continue;
+        drillsToday += 1;
+        if (a.correct) correctToday += 1;
+        if (item.history.some(prev => prev.at < since)) reviewsToday += 1;
+      }
+    }
+    return [
+      { key: 'drills', label: 'Complete 2 drills', have: drillsToday, need: 2 },
+      { key: 'debug', label: 'Solve 1 drill correctly', have: correctToday, need: 1 },
+      { key: 'recall', label: 'Review 5 recall questions', have: reviewsToday, need: 5 },
+      { key: 'streak', label: 'Practise today to keep your streak', have: drillsToday > 0 ? 1 : 0, need: 1 },
+    ].map(g => ({ ...g, done: g.have >= g.need }));
+  }, [recallItems]);
+
   // ----- Recommended videos: those the user hasn't started yet -----
   const recommended = useMemo(
     () =>
@@ -347,26 +370,17 @@ export default function V2Dashboard() {
           <h2>Today's Goals</h2>
         </div>
         <div className="v2-muted v2-small" style={{ marginBottom: 8 }}>
-          {Object.values(goals).filter(Boolean).length} of 4 completed
+          {goalRows.filter(g => g.done).length} of {goalRows.length} completed
         </div>
         <div className="v2-goal-progress">
-          <span style={{ width: `${(Object.values(goals).filter(Boolean).length / 4) * 100}%` }} />
+          <span style={{ width: `${(goalRows.filter(g => g.done).length / goalRows.length) * 100}%` }} />
         </div>
         <div className="v2-goal-list">
-          {([
-            { key: 'drills', label: 'Complete 2 drills', count: '2/2' },
-            { key: 'debug', label: 'Solve 1 debug challenge', count: '1/1' },
-            { key: 'recall', label: 'Do 5 recall questions', count: '0/5' },
-            { key: 'streak', label: 'Maintain 10 min streak', count: '0/1' },
-          ] as const).map(g => (
+          {goalRows.map(g => (
             <label key={g.key} className="v2-goal">
-              <input
-                type="checkbox"
-                checked={goals[g.key]}
-                onChange={e => setGoals(prev => ({ ...prev, [g.key]: e.target.checked }))}
-              />
+              <input type="checkbox" checked={g.done} readOnly tabIndex={-1} />
               <span>{g.label}</span>
-              <span className="v2-count">{g.count}</span>
+              <span className="v2-count">{Math.min(g.have, g.need)}/{g.need}</span>
             </label>
           ))}
         </div>

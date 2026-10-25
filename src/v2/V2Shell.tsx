@@ -188,7 +188,7 @@ export function V2Shell({
                   className="v2-shell-icon-btn"
                   aria-label="Sign out"
                   title="Sign out"
-                  onClick={() => api.signOut()}
+                  onClick={() => { api.signOut().finally(() => window.location.assign('/v2/auth')); }}
                 >
                   ⌄
                 </button>

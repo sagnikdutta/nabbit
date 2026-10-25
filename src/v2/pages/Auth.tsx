@@ -149,8 +149,11 @@ export default function V2AuthPage({
       onSuccess(user);
       return;
     }
-    // Default: land on the V2 dashboard.
-    window.location.href = '/v2/';
+    // Default: back to where the user was headed (same-origin /v2/ paths only),
+    // otherwise the V2 dashboard.
+    const next = new URLSearchParams(window.location.search).get('next');
+    const safe = next && /^\/v2\/(?!\/)/.test(next) && !next.startsWith('/v2/auth') ? next : '/v2/';
+    window.location.href = safe;
   };
 
   const handleSignUp = async (e: React.FormEvent) => {

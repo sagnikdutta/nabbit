@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import App from './App';
 import { supabase } from './lib/supabase';
+import { api } from './lib/api';
 
 /*
  * Path-based router that picks between V1 (the current app, hash-routed under
@@ -65,6 +66,23 @@ function pickFromPath(pathname: string): Choice {
   return { kind: 'resolving' };
 }
 
+/*
+ * V2 pages that require a signed-in user. Signed-out visitors are sent to
+ * /v2/auth (with ?next= so they land back where they were). Deliberately open:
+ *   - /v2/auth       — the sign-in page itself
+ *   - /v2/challenge  — shared drill links + the anonymous trial drill
+ */
+const PROTECTED_KINDS = new Set<Choice['kind']>([
+  'v2-dashboard',
+  'v2-recall',
+  'v2-leaderboard',
+  'v2-community',
+  'v2-import',
+  'v2-library',
+  'v2-progress',
+  'v2-soon',
+]);
+
 async function fetchDefaultVersion(): Promise<'v1' | 'v2'> {
   if (!supabase) return 'v1';
   try {
@@ -97,6 +115,18 @@ export default function AppRouter() {
     })();
     return () => { alive = false; };
   }, [choice.kind]);
+
+  const blocked = PROTECTED_KINDS.has(choice.kind) && !api.getCurrentUser();
+
+  useEffect(() => {
+    if (!blocked) return;
+    const next = window.location.pathname + window.location.search;
+    window.location.replace(`/v2/auth?next=${encodeURIComponent(next)}`);
+  }, [blocked]);
+
+  if (blocked) {
+    return <div style={{ padding: 24, fontFamily: 'system-ui', color: '#667293' }}>Redirecting to sign in…</div>;
+  }
 
   if (choice.kind === 'v2-dashboard') {
     return (
