@@ -26,6 +26,8 @@ const V2Dashboard = lazy(() => import('./v2/Dashboard'));
 const V2Auth = lazy(() => import('./v2/pages/Auth'));
 const V2Challenge = lazy(() => import('./v2/pages/Challenge'));
 const V2Recall = lazy(() => import('./v2/pages/Recall'));
+const V2Leaderboard = lazy(() => import('./v2/pages/Leaderboard'));
+const V2Community = lazy(() => import('./v2/pages/Community'));
 
 type Choice =
   | { kind: 'v1' }
@@ -33,12 +35,16 @@ type Choice =
   | { kind: 'v2-auth' }
   | { kind: 'v2-challenge' }
   | { kind: 'v2-recall' }
+  | { kind: 'v2-leaderboard' }
+  | { kind: 'v2-community' }
   | { kind: 'resolving' };
 
 function pickFromPath(pathname: string): Choice {
   if (pathname === '/v2' || pathname === '/v2/') return { kind: 'v2-dashboard' };
   if (pathname === '/v2/auth' || pathname === '/v2/auth/') return { kind: 'v2-auth' };
   if (pathname === '/v2/recall' || pathname === '/v2/recall/') return { kind: 'v2-recall' };
+  if (pathname === '/v2/leaderboard' || pathname === '/v2/leaderboard/') return { kind: 'v2-leaderboard' };
+  if (pathname === '/v2/community' || pathname === '/v2/community/') return { kind: 'v2-community' };
   if (/^\/v2\/challenge\/[^/]+\/?$/.test(pathname)) return { kind: 'v2-challenge' };
   if (pathname === '/v1' || pathname.startsWith('/v1/')) return { kind: 'v1' };
   if (pathname.startsWith('/v2/')) return { kind: 'v1' };
@@ -106,6 +112,22 @@ export default function AppRouter() {
     return (
       <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading recall…</div>}>
         <V2Recall />
+      </Suspense>
+    );
+  }
+
+  if (choice.kind === 'v2-leaderboard') {
+    return (
+      <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading leaderboard…</div>}>
+        <V2Leaderboard />
+      </Suspense>
+    );
+  }
+
+  if (choice.kind === 'v2-community') {
+    return (
+      <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading community…</div>}>
+        <V2Community />
       </Suspense>
     );
   }

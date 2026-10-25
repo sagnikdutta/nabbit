@@ -26,6 +26,8 @@ export type V2NavKey =
   | 'Practice'
   | 'Recall'
   | 'Progress'
+  | 'Leaderboard'
+  | 'Community'
   | 'Achievements'
   | 'Settings';
 
@@ -41,10 +43,12 @@ const NAV_LINKS: NavLink[] = [
   { key: 'My Library',    icon: '▤', href: '/v2/' },
   { key: 'Practice',      icon: '♧', href: '/v2/challenge/react-state-batching' },
   { key: 'Recall',        icon: '◴', href: '/v2/recall' },
+  { key: 'Leaderboard',   icon: '🏆', href: '/v2/leaderboard' },
+  { key: 'Community',     icon: '👥', href: '/v2/community' },
   { key: 'Progress',      icon: '📊', href: '/v2/' },
 ];
 const NAV_SECONDARY: NavLink[] = [
-  { key: 'Achievements', icon: '🏆', href: '/v2/' },
+  { key: 'Achievements', icon: '★',       href: '/v2/' },
   { key: 'Settings',     icon: '⚙',       href: '/v2/' },
 ];
 

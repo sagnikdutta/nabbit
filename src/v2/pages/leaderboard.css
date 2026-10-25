@@ -1,0 +1,155 @@
+/*
+ * V2 Season leaderboard. Pro-only; non-Pro users see a locked state card.
+ * Pro users see a ranked list with bucket chips + Elo, pulled from
+ * supabase.rpc('season_leaderboard').
+ */
+
+.v2-leaderboard {
+  max-width: 760px;
+  margin: 0 auto;
+  display: grid;
+  gap: 20px;
+}
+
+.v2-lb-header {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+}
+.v2-lb-header h1 {
+  margin: 0;
+  font-size: clamp(22px, 2vw, 28px);
+  font-weight: 800; letter-spacing: -0.5px;
+}
+.v2-lb-header .season-chip {
+  padding: 4px 10px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 999px;
+  font-size: 12px;
+  font-family: ui-monospace, Menlo, monospace;
+}
+.v2-lb-sub { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0; }
+
+/* ---- Pro-locked state ---- */
+.v2-lb-locked {
+  padding: 24px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 14px;
+}
+.v2-lb-locked-head {
+  display: flex; align-items: flex-start; gap: 14px;
+}
+.v2-lb-locked-ico {
+  position: relative;
+  width: 44px; height: 44px;
+  display: grid; place-items: center;
+  border-radius: 12px;
+  background: var(--soft);
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+.v2-lb-locked-ico .lock {
+  position: absolute;
+  top: -4px; right: -4px;
+  width: 18px; height: 18px;
+  display: grid; place-items: center;
+  background: var(--amber);
+  color: #fff;
+  border-radius: 50%;
+  border: 2px solid var(--panel);
+}
+.v2-lb-locked-copy strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.v2-lb-locked-copy span {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+.v2-lb-locked .cta {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--purple), var(--purple2));
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  text-decoration: none;
+  box-shadow: 0 4px 12px #6847ff22;
+  justify-self: start;
+}
+
+/* ---- Ranked list ---- */
+.v2-lb-list {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.v2-lb-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 16px;
+  border-top: 1px solid var(--line);
+}
+.v2-lb-row:first-child { border-top: 0; }
+.v2-lb-rank {
+  text-align: right;
+  font-family: ui-monospace, Menlo, monospace;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.v2-lb-row.top-3 .v2-lb-rank { color: var(--purple); }
+.v2-lb-name { font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v2-lb-bucket {
+  padding: 3px 10px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+.v2-lb-bucket.Diamond   { color: var(--purple); background: var(--purple-soft); }
+.v2-lb-bucket.Platinum  { color: var(--green);  background: color-mix(in srgb, var(--green) 15%, transparent); }
+.v2-lb-bucket.Gold      { color: var(--amber);  background: color-mix(in srgb, var(--amber) 15%, transparent); }
+.v2-lb-bucket.Silver    { color: var(--muted);  background: var(--soft); }
+.v2-lb-rating {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.v2-lb-empty {
+  padding: 28px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.v2-lb-error {
+  padding: 14px 16px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--red) 40%, var(--line));
+  color: var(--red);
+  font-size: 13px;
+}
