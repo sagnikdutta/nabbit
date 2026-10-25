@@ -15,6 +15,10 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 // models (e.g. gemini-2.5-flash) return 404 for new API keys, so when unset the code
 // discovers a usable model from the key's own model list instead.
 const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || '';
+// Google Search grounding costs an extra request per import and is the first quota a
+// free-tier key runs out of, so it is opt-in: set GEMINI_SEARCH_GROUNDING=1 to enable.
+// Without it the prompt still carries the video's real title and channel (oEmbed).
+const SEARCH_GROUNDING = /^(1|true|on)$/i.test(process.env.GEMINI_SEARCH_GROUNDING || '');
 const isProduction = process.env.NODE_ENV === 'production';
 
 // Vercel kills the function at maxDuration (60s in vercel.json); stop retrying before that.
@@ -102,7 +106,7 @@ export interface GenerateResult {
 
 export function geminiStatusLine(): string {
   return process.env.GEMINI_API_KEY
-    ? `Gemini key present, model ${GEMINI_MODEL}`
+    ? `Gemini key present, model ${GEMINI_MODEL}, search grounding ${SEARCH_GROUNDING ? 'on' : 'off'}`
     : 'NO GEMINI_API_KEY — imports will return an error';
 }
 
@@ -162,7 +166,7 @@ export async function generateFromUrl(body: unknown): Promise<GenerateResult> {
         }
 
         let searchContext = '';
-        try {
+        if (SEARCH_GROUNDING) try {
           const searchRes = await ai.models.generateContent({
             model: GEMINI_MODEL,
             contents: `Search Google for the YouTube video "${oembedTitle || youtubeId}"${oembedChannel ? ` by ${oembedChannel}` : ''} (video ID ${youtubeId}) ${topicHint || ''}. What technology, system design topic or cloud service does it teach, and what are its key concepts? Keep concise in 2-3 sentences.`,
