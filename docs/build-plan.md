@@ -21,6 +21,8 @@
 > **Status (24 Oct, UI debt):** The signed-in dashboard order on `LibraryScreen` is wrong after Phase 8 v2/v3. Boss drill card, Season leaderboard tile and Community drafts tile sit *above* "Welcome back, user" and read as an afterthought — tall, text-only rows. "Import from YouTube" shrank to a sub-button in the same area and is almost invisible. A dashboard **UI redesign** is the next thing to do before any more feature work — logged as **B9** below.
 >
 > **Status (24 Oct, V2 scaffold):** A full visual overhaul from a new mockup is in flight; subsumes B9. V2 scaffold shipped locally (not yet pushed): `src/v2/Dashboard.tsx` + `src/v2/dashboard.css` + `src/v2/thumbnails.ts` (one-page React port of the attached mockup, own CSS-variable token set, light + dark), `src/AppRouter.tsx` (path routing: `/v2` → V2, `/v1/*` and `/v2/<anything>` → V1), `server.ts` middleware doing a cached Supabase lookup for the `/` redirect, migration `0011_ui_versions.sql` (`version` + `default`, RLS off, seeded with `v1=true, v2=false`). Live Supabase currently has `default=true` on `v2` for preview; fallbacks on both the server and client flipped to V1 so a lookup failure never traps a user in a half-built V2. Plan to migrate every page logged as **B10** below.
+>
+> **Status (25 Oct, V2 built — flip pending):** **V2-A and V2-B are done locally** (7 unpushed commits on `main`, latest `95c3163`). Every V2 nav item now has a real route: Dashboard (real data + Daily Drill / Boss / Season cards, Mastery panel, Community tile), Auth (email + Google/GitHub OAuth), Challenge (all seven formats, session combo, `?boss=1`), Recall (+ Mastery), Leaderboard, Community, Import Video, My Library, Progress; Achievements and Settings are explicit "coming soon" pages. Shared kit in `src/v2/components/primitives.tsx` (`V2Button/Chip/Progress/Panel/Card/Toast/Modal`). Typecheck clean; signed-out paths browser-verified. **Not yet verified:** signed-in + Pro paths (needs your account with `is_pro`), OAuth (providers not enabled in Supabase yet). **V2-C is prepared, not run** — see `docs/v2-flip.md` (staging checklist, flip SQL + rollback, sunset plan, V1 deletion inventory).
 
 ---
 
@@ -154,13 +156,14 @@ Phase 8 landed a lot of new dashboard surfaces (Daily Drill card, Boss drill car
 
 **Acceptance:** screenshot a signed-in dashboard at 1280px and 375px; verify Pro row renders Boss + Season banner + Leaderboard as one visual group; Community row renders Drafts + YouTube importer at equal weight; Importer is clearly discoverable; Welcome back is the top heading; nothing visually orphaned. No new tests. No backend changes.
 
-### B10 — V2-everywhere migration  *(design overhaul; subsumes B9)* — PLANNED
+### B10 — V2-everywhere migration  *(design overhaul; subsumes B9)* — BUILT, FLIP PENDING
 
-**Status (24 Oct):** V2 scaffold shipped locally — path-based router, V2 Dashboard home port, Supabase `ui_versions` table, server-side `/` redirect. Reaching the end state means every V1 page has a V2 counterpart and the `ui_versions.default` row flips to `v2`.
+**Status (25 Oct):** V2-A (design system) and V2-B (all pages) are built locally. Remaining is V2-C: verify signed-in/Pro and OAuth, run staging, flip `ui_versions`, pick the V1 sunset date, delete V1. Runbook: [`docs/v2-flip.md`](v2-flip.md).
 
 **Where things stand today:**
-- `src/v2/Dashboard.tsx` + `src/v2/dashboard.css` + `src/v2/thumbnails.ts` — one-page port of the attached mockup (hero · Continue · Library grid · Recommended · right rail with ring/goals/recall/achievements). Hard-coded demo data.
-- `src/AppRouter.tsx` — path routing: `/v2` → V2 Dashboard, `/v1/*` and `/v2/<anything>` → V1, `/` → server-side Supabase lookup falling back to V1.
+- `src/v2/` — `Dashboard.tsx` (real data via `api`; hero importer with in-flight timer + inline errors), `V2Shell.tsx` (sidebar + topbar + rail slot), `useShellData.ts` (live streak/XP/level + Pro flag), `useLibrary.ts`, `components/primitives.tsx|css`, `components/DashboardCards.tsx` (Daily Drill, Boss, Season, Community tile, Mastery panel), `theme/tokens.css`, and `pages/` (Auth, Challenge, Recall, Leaderboard, Community, Import, Library, Progress, ComingSoon).
+- `src/AppRouter.tsx` — path routing: every V2 page above has an explicit route; `/v1/*` → V1; unknown `/v2/<path>` still falls through to V1; `/` → server-side Supabase lookup falling back to V1.
+- Known gaps: Achievements and Settings are "coming soon"; no real Pro purchase flow (either version); import progress is a timer + indeterminate bar (the API emits no progress events).
 - `server.ts` — Express middleware reads `public.ui_versions` (30 s in-process cache) and 302-redirects `/` to the default version; falls back to V1 on any failure.
 - `supabase/migrations/0011_ui_versions.sql` — `ui_versions(version pk, "default" bool)`, RLS off, seeded with `v1=true, v2=false`. Currently `default=true` is on `v2` in the live project (manual flip for preview).
 
@@ -172,7 +175,7 @@ Phase 8 landed a lot of new dashboard surfaces (Daily Drill card, Boss drill car
 3. **Shared data layer, no duplication.** Both versions keep calling `api.ts`, `supabase-store.ts`, `types.ts`, `content/data.ts`. V2 owns presentation only.
 4. **Visible version switcher.** Add a one-line "Preview new UI →" / "Classic view →" link in each version's sidebar footer so testers can jump between them without URL-typing.
 
-**Phase V2-A — Design system foundation** (1 PR, ~1 day)
+**Phase V2-A — Design system foundation** — DONE ✅ *(25 Oct; deviations: primitives are one file `components/primitives.tsx` rather than one file per component; `V2Shell` carries the sidebar/topbar instead of separate `V2Sidebar`/`V2Topbar`; routing stayed path-based in `AppRouter` — no `v2router.tsx`; no `tokens-dark.css` — dark mode lives in `tokens.css`)*
 Move V2 from "one-page prototype" to "reusable kit".
 - Extract `.v2-root` CSS variables from `src/v2/dashboard.css` into `src/v2/theme/tokens.css` (parallel to `src/theme/tokens.css`). Dark-mode variants in `tokens-dark.css`.
 - Build `src/v2/components/`:
@@ -184,7 +187,7 @@ Move V2 from "one-page prototype" to "reusable kit".
 - Refactor `src/v2/Dashboard.tsx` to consume the new primitives — proof the kit holds.
 - `/v2/<anything>` fallback stays V1 while pages are missing.
 
-**Phase V2-B — Pages, in priority order** (one per PR)
+**Phase V2-B — Pages, in priority order** — DONE ✅ *(all six ported, plus Import Video / My Library / Progress / Achievements / Settings nav pages added beyond the original scope; Challenge, Recall, Auth, Leaderboard, Community migrated onto the primitives)*
 Each page lives at `src/v2/pages/<name>.tsx`, reuses `V2Shell`, binds to the shared data layer, and is ported to a V2-styled surface:
 
 | # | V1 screen | V2 page | Shipping value |
@@ -198,8 +201,8 @@ Each page lives at `src/v2/pages/<name>.tsx`, reuses `V2Shell`, binds to the sha
 
 After each PR, `/v2/<name>` renders V2; `/v2/*` still falls through to V1 for anything unimplemented.
 
-**Phase V2-C — The flip**
-- All six pages at parity in V2.
+**Phase V2-C — The flip** — PREPARED, NOT RUN *(detailed steps, SQL, rollback and the V1 deletion inventory are in [`docs/v2-flip.md`](v2-flip.md))*
+- All six pages at parity in V2. ✅ (signed-in/Pro verification still to do)
 - Run both defaults side-by-side on staging for a week; collect feedback via the sidebar switcher.
 - Flip: `update public.ui_versions set "default" = (version = 'v2');` — server picks it up within 30 s.
 - Pick a sunset date for V1 (say two weeks later).
