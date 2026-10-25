@@ -231,10 +231,6 @@ export default function V2AuthPage({
             <div className="v2-brand-tag">catch the nit</div>
           </div>
         </div>
-        <nav className="v2-auth-nav" aria-label="Primary">
-          <a href="/v2/">Video Library</a>
-          <a href="/v2/challenge/react-state-batching">Bug Hunt Drill</a>
-        </nav>
         <div className="v2-auth-topbar-spacer" />
         <button
           type="button"
