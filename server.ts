@@ -9,8 +9,8 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { CURATED_CHALLENGES, CURATED_VIDEOS } from './src/content/data.ts';
 import { extractYouTubeVideoId } from './src/lib/youtube.ts';
 
-// Same model the backfill script uses; override per environment with GEMINI_MODEL.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// The model this endpoint has always used; override per environment with GEMINI_MODEL.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 import { Challenge, Video } from './src/lib/types.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -429,7 +429,8 @@ async function startServer() {
           });
 
           // Ground on the real video: oEmbed gives the true title/channel (no API
-          // key needed) and Gemini reads the video itself via its YouTube URL.
+          // key needed), then Google Search grounding (the original, known-working
+          // approach) fills in the tech stack and key concepts.
           const watchUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
           let oembedTitle = '';
           let oembedChannel = '';
@@ -444,12 +445,25 @@ async function startServer() {
             console.warn('[Nabbit] oEmbed lookup notice:', oembedErr);
           }
 
+          let searchContext = '';
+          try {
+            const searchRes = await ai.models.generateContent({
+              model: GEMINI_MODEL,
+              contents: `Search Google for the YouTube video "${oembedTitle || youtubeId}"${oembedChannel ? ` by ${oembedChannel}` : ''} (video ID ${youtubeId}) ${topicHint || ''}. What technology, system design topic or cloud service does it teach, and what are its key concepts? Keep concise in 2-3 sentences.`,
+              config: { tools: [{ googleSearch: {} }] },
+            });
+            if (searchRes.text) searchContext = searchRes.text;
+          } catch (searchErr) {
+            console.warn('[Nabbit] Search grounding notice:', searchErr);
+          }
+
           const prompt = `You are an expert software engineer and code reviewer creating a bug-hunt judgment drill for "Nabbit".
-A developer wants to practice code-review on the attached YouTube tutorial.
+A developer wants to practice code-review on this YouTube tutorial.
 - YouTube Video ID: ${youtubeId}
 ${oembedTitle ? `- Video title: "${oembedTitle}"${oembedChannel ? ` by ${oembedChannel}` : ''}
-` : ''}- Topic or Hint: "${topicHint || 'Determine from the video itself'}"
-
+` : ''}- Topic or Hint: "${topicHint || 'Determine from the tutorial context'}"
+${searchContext ? `- Grounded Tutorial Search Context: "${searchContext}"
+` : ''}
 Base every challenge on concepts actually taught in THIS video. Do not invent generic topics; if you cannot determine what the video teaches, return an empty challenges array.
 
 CRITICAL DOMAIN RULES:
@@ -479,7 +493,7 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
 
           const response = await ai.models.generateContent({
             model: GEMINI_MODEL,
-            contents: [{ role: 'user', parts: [{ fileData: { fileUri: watchUrl } }, { text: prompt }] }],
+            contents: prompt,
             config: {
               responseMimeType: 'application/json',
               responseSchema: {
@@ -605,9 +619,12 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
           }
         } catch (geminiErr) {
           console.error('[Nabbit] Gemini generation error:', geminiErr);
+          const detail = geminiErr instanceof Error ? geminiErr.message.slice(0, 300) : String(geminiErr).slice(0, 300);
           return res.status(502).json({
             error: "The AI service couldn't generate drills for this video. Please try again, or try a different video.",
             code: 'ai_failed',
+            // Provider detail only outside production, to make setup problems diagnosable.
+            ...(isProduction ? {} : { detail }),
           });
         }
       }
@@ -641,6 +658,9 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
     });
   }
 
+  console.log(
+    `[Nabbit] Video import: ${process.env.GEMINI_API_KEY ? `Gemini key present, model ${GEMINI_MODEL}` : 'NO GEMINI_API_KEY — imports will return an error'}`
+  );
   app.listen(PORT, () => {
     console.log(`[Nabbit] Server running on port ${PORT} (${isProduction ? 'production' : 'development'})`);
   });

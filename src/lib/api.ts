@@ -956,8 +956,22 @@ export const api = {
     const isJson = (res.headers.get('content-type') || '').includes('application/json');
     const data = isJson ? await res.json().catch(() => null) : null;
     if (!res.ok || !data) {
-      throw new Error(data?.error || 'Importing videos needs the Nabbit server, which is not available here.');
+      // A non-JSON reply means /api isn't served by the Nabbit server at all
+      // (static hosting, or `vite preview`, which serves index.html for /api).
+      if (data?.detail) console.warn('[Nabbit] import detail:', data.detail);
+      throw new Error(
+        data?.error ||
+          'This page is running without the Nabbit server, so video import is unavailable. Start the app with "npm start" (after "npm run build") or "npm run dev" and open the address it prints.',
+      );
     }
+    // Older servers answered with a canned template pack unrelated to the video.
+    // Never accept it: tell the user to restart/redeploy the server instead.
+    if (data.source === 'template') {
+      throw new Error(
+        'The Nabbit server is running an outdated version that fabricates unrelated drills. Restart it (npm start / npm run dev) so it picks up the latest code.',
+      );
+    }
+    if (data.detail) console.warn('[Nabbit] import detail:', data.detail);
     if (!data.video || !Array.isArray(data.challenges) || data.challenges.length === 0) {
       throw new Error("Couldn't build drills from this video. Try another video.");
     }
