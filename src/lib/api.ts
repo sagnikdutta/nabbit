@@ -951,7 +951,7 @@ export const api = {
         body: JSON.stringify({ url, topicHint }),
       });
     } catch {
-      throw new Error("Couldn't reach the Nabbit server. Check your connection and try again.");
+      throw new Error('Server issue. Please check your connection and try again.');
     }
     const isJson = (res.headers.get('content-type') || '').includes('application/json');
     const data = isJson ? await res.json().catch(() => null) : null;
@@ -959,17 +959,12 @@ export const api = {
       // A non-JSON reply means /api isn't served by the Nabbit server at all
       // (static hosting, or `vite preview`, which serves index.html for /api).
       if (data?.detail) console.warn('[Nabbit] import detail:', data.detail);
-      throw new Error(
-        data?.error ||
-          'This page is running without the Nabbit server, so video import is unavailable. Start the app with "npm start" (after "npm run build") or "npm run dev" and open the address it prints.',
-      );
+      throw new Error(data?.error || 'Server issue. Video import is unavailable right now, please try again later.');
     }
     // Older servers answered with a canned template pack unrelated to the video.
     // Never accept it: tell the user to restart/redeploy the server instead.
     if (data.source === 'template') {
-      throw new Error(
-        'The Nabbit server is running an outdated version that fabricates unrelated drills. Restart it (npm start / npm run dev) so it picks up the latest code.',
-      );
+      throw new Error('Server issue. Video import is unavailable right now, please try again later.');
     }
     if (data.detail) console.warn('[Nabbit] import detail:', data.detail);
     if (!data.video || !Array.isArray(data.challenges) || data.challenges.length === 0) {
