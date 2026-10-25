@@ -11,8 +11,9 @@ import type { Challenge, Video } from '../../src/lib/types.js';
 
 // The model this endpoint has always used; override per environment with GEMINI_MODEL.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-// Optional second model for when the primary is overloaded. No default: older models
-// (e.g. gemini-2.5-flash) are no longer available to new API keys and return 404.
+// Optional second model for when the primary is overloaded. No hardcoded default: older
+// models (e.g. gemini-2.5-flash) return 404 for new API keys, so when unset the code
+// discovers a usable model from the key's own model list instead.
 const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || '';
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -24,35 +25,74 @@ function isTransient(err: unknown): boolean {
   return /"code":\s*(429|500|503|504)|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(msg);
 }
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
 /**
- * Run a Gemini call, retrying transient failures (high demand / quota spikes):
- * primary model twice, then the fallback model twice, with short backoff.
- * Non-transient errors (bad key, invalid request) are thrown immediately.
+ * Other text models this API key can use, newest flash/pro first. Used only
+ * when the primary model stays overloaded and no GEMINI_FALLBACK_MODEL is set.
  */
-async function withModelFallback<T>(startedAt: number, call: (model: string) => Promise<T>): Promise<T> {
-  // Primary model up to 4 times (backoff 1.5s, 3s, 4.5s); if a fallback model is
-  // configured it takes the last two attempts.
-  const models = GEMINI_FALLBACK_MODEL && GEMINI_FALLBACK_MODEL !== GEMINI_MODEL
-    ? [GEMINI_MODEL, GEMINI_MODEL, GEMINI_FALLBACK_MODEL, GEMINI_FALLBACK_MODEL]
-    : [GEMINI_MODEL, GEMINI_MODEL, GEMINI_MODEL, GEMINI_MODEL];
+async function discoverFallbackModels(ai: GoogleGenAI, exclude: string): Promise<string[]> {
+  try {
+    const names: string[] = [];
+    const pager = await ai.models.list({ config: { pageSize: 100 } });
+    for await (const m of pager) {
+      const name = (m.name || '').replace(/^models\//, '');
+      const actions = m.supportedActions || [];
+      if (!name.startsWith('gemini-') || name === exclude) continue;
+      if (actions.length && !actions.includes('generateContent')) continue;
+      if (/embedding|image|tts|live|audio|vision|aqa|learnlm|robotics|computer-use|thinking-exp|preview-\d{2}-\d{2}/i.test(name)) continue;
+      names.push(name);
+    }
+    const rank = (n: string) => (/flash/.test(n) ? 0 : /pro/.test(n) ? 1 : 2);
+    names.sort((x, y) => rank(x) - rank(y) || y.localeCompare(x, undefined, { numeric: true }));
+    console.log('[Nabbit] Fallback model candidates:', names.slice(0, 6).join(', ') || '(none)');
+    return names.slice(0, 3);
+  } catch (err) {
+    console.warn('[Nabbit] Could not list Gemini models:', err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+/**
+ * Run a Gemini call through overloads: the primary model twice (backoff 1.5s, 3s),
+ * then a configured/discovered fallback model, one try each (models that 404 for
+ * this key are skipped). Non-transient errors on the primary (bad key, invalid
+ * request) are thrown immediately. If every candidate fails, the error that
+ * started the retries is reported.
+ */
+async function withModelFallback<T>(
+  ai: GoogleGenAI,
+  startedAt: number,
+  call: (model: string) => Promise<T>,
+): Promise<T> {
+  const overBudget = () => Date.now() - startedAt > RETRY_DEADLINE_MS;
   let firstTransient: unknown;
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < models.length; attempt++) {
+
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return await call(models[attempt]);
+      return await call(GEMINI_MODEL);
     } catch (err) {
-      lastErr = err;
-      const transient = isTransient(err);
-      if (transient && firstTransient === undefined) firstTransient = err;
-      if (!transient || Date.now() - startedAt > RETRY_DEADLINE_MS) {
-        // Report the overload that started the retries, not a later fallback error.
-        throw transient ? err : (firstTransient ?? err);
-      }
-      console.warn(`[Nabbit] Gemini ${models[attempt]} transient failure (attempt ${attempt + 1}/${models.length}), retrying`);
-      await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+      if (!isTransient(err)) throw err;
+      firstTransient ??= err;
+      console.warn(`[Nabbit] Gemini ${GEMINI_MODEL} overloaded (attempt ${attempt + 1}/2)`);
+      if (overBudget()) throw firstTransient;
+      if (attempt === 0) await sleep(1500);
     }
   }
-  throw lastErr;
+
+  const candidates = GEMINI_FALLBACK_MODEL && GEMINI_FALLBACK_MODEL !== GEMINI_MODEL
+    ? [GEMINI_FALLBACK_MODEL]
+    : await discoverFallbackModels(ai, GEMINI_MODEL);
+  for (const model of candidates) {
+    if (overBudget()) break;
+    try {
+      console.warn(`[Nabbit] Trying fallback model ${model}`);
+      return await call(model);
+    } catch (err) {
+      console.warn(`[Nabbit] Fallback ${model} failed:`, err instanceof Error ? err.message.slice(0, 160) : err);
+    }
+  }
+  throw firstTransient;
 }
 
 export interface GenerateResult {
@@ -167,7 +207,7 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
 - videoTimestampSeconds: The exact second in the tutorial where this concept is taught.
 - inspectionClue: A specific pointer directing the reviewer's attention to the problematic property or line.`;
 
-        const response = await withModelFallback(startedAt, model => ai.models.generateContent({
+        const response = await withModelFallback(ai, startedAt, model => ai.models.generateContent({
           model,
           contents: prompt,
           config: {
