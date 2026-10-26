@@ -1,7 +1,7 @@
 // Phase 8 v1 — deterministic grading + score formula.
 // Pure functions, no I/O, no LLM. Safe to run client-side on every attempt.
 
-import { Challenge, AttemptInput, Confidence, ScoreBreakdown } from './types';
+import { Challenge, AttemptInput, Confidence, ScoreBreakdown, ChallengeFormat, VISIBLE_FORMATS } from './types';
 
 export interface GradeResult {
   correct: boolean;        // full-correct — advances SRS interval, increments combo/streak
@@ -34,11 +34,11 @@ export function speedFactor(timeMs: number, median: number): number {
  * Formats available for this drill, derived from field presence (author can override
  * with `challenge.availableFormats`). Keep in sync with AttemptInput's union.
  */
-export function availableFormats(challenge: Challenge) {
+export function availableFormats(challenge: Challenge): ChallengeFormat[] {
   if (challenge.availableFormats && challenge.availableFormats.length) {
     return challenge.availableFormats;
   }
-  const formats: ('spot-fix' | 'locate-then-fix' | 'rank-fixes' | 'blind-fix' | 'diff-review' | 'impostor' | 'red-herring')[] = ['spot-fix'];
+  const formats: ChallengeFormat[] = ['spot-fix'];
   if (typeof challenge.buggyLineAnswer === 'number') formats.push('locate-then-fix');
   if (Array.isArray(challenge.rankedFixes) && challenge.rankedFixes.length === challenge.fixOptions.length) {
     formats.push('rank-fixes');
@@ -58,6 +58,19 @@ export function availableFormats(challenge: Challenge) {
     formats.push('red-herring');
   }
   return formats;
+}
+
+/**
+ * UI gate: the subset of a drill's supported formats that the chooser and
+ * F-key cycle should actually expose. Filtered through VISIBLE_FORMATS so
+ * we can hide a format from users without touching content or grading.
+ * `availableFormats()` stays the raw data contract; `grade()` still handles
+ * every format, so a drill reached via a direct URL in a hidden format works.
+ */
+export function visibleFormats(challenge: Challenge): ChallengeFormat[] {
+  const all = availableFormats(challenge);
+  const filtered = all.filter(f => VISIBLE_FORMATS.includes(f));
+  return filtered.length > 0 ? filtered : ['spot-fix'];
 }
 
 /**

@@ -85,6 +85,16 @@ export type AttemptInput =
 /** Pro-only formats. Non-Pro users see them with a lock badge. */
 export const PRO_FORMATS: ReadonlyArray<ChallengeFormat> = ['impostor', 'red-herring'];
 
+/**
+ * Formats actually shown in the UI right now (product gate, independent of
+ * what a drill supports). Rank-fixes, Blind fix and Diff review added UX
+ * cognitive load without a demand signal; Impostor and Red herring are Pro
+ * and still awaiting human-reviewed content. Hidden from the format chooser
+ * and the F-key cycle; `grade()` still supports every format for drills
+ * reached via a direct URL. Add a format back here when there's user demand.
+ */
+export const VISIBLE_FORMATS: ReadonlyArray<ChallengeFormat> = ['spot-fix', 'locate-then-fix'];
+
 export interface ScoreBreakdown {
   basePoints: number;          // 100 full / 50 partial / -40 wrong
   confidenceMultiplier: number; // 1 / 1.5 / 2

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Challenge, Video, RecallItem, AttemptInput, ChallengeFormat, Confidence } from '../lib/types';
-import { availableFormats } from '../lib/grading';
+import { visibleFormats } from '../lib/grading';
 import { CodeBlock } from '../components/CodeBlock';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { Button } from '../components/Button';
@@ -82,7 +82,7 @@ export const ChallengeScreen: React.FC<ChallengeScreenProps> = ({
   const [proTease, setProTease] = useState<ChallengeFormat | null>(null);
   const [optedOutIncident, setOptedOutIncident] = useState<boolean>(getIncidentOptOut);
   const incidentOn = shouldShowIncident(challenge.difficulty, userConceptRating, optedOutIncident);
-  const formats = availableFormats(challenge);
+  const formats = visibleFormats(challenge);
   const identityOrder = React.useMemo(
     () => challenge.fixOptions.map((_, i) => i),
     [challenge.id, challenge.fixOptions.length],

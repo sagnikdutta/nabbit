@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { Challenge, Video, AttemptInput, Confidence, ChallengeFormat, PRO_FORMATS, RecallStats } from '../../lib/types';
-import { availableFormats, grade } from '../../lib/grading';
+import { visibleFormats, grade } from '../../lib/grading';
 import { supabase } from '../../lib/supabase';
 import { V2Shell } from '../V2Shell';
 import { V2Button, V2Card } from '../components/primitives';
@@ -175,7 +175,7 @@ export default function V2ChallengePage() {
   }, []);
 
   const supportedFormats = useMemo(
-    () => (challenge ? availableFormats(challenge) : ['spot-fix' as ChallengeFormat]),
+    () => (challenge ? visibleFormats(challenge) : ['spot-fix' as ChallengeFormat]),
     [challenge],
   );
   const identityOrder = useMemo(
