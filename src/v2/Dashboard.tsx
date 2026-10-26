@@ -121,6 +121,27 @@ export default function V2Dashboard() {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
   }, []);
 
+  /**
+   * Remove a user-imported custom video from the library. Curated videos
+   * (shipped content) can't be removed — the UI only exposes this on cards
+   * whose video.isUserCustom === true.
+   */
+  const handleRemovePack = async (video: Video) => {
+    if (!video.isUserCustom) {
+      showToast("Built-in videos can't be removed.");
+      return;
+    }
+    const ok = window.confirm(`Remove "${video.title}" from your library?\n\nThis also deletes any attempts and recall items tied to its drills. This cannot be undone.`);
+    if (!ok) return;
+    const { removed } = await api.removeCustomPack(video.id);
+    if (removed) {
+      showToast(`Removed "${video.title}" from your library.`);
+      await loadAll();
+    } else {
+      showToast("Couldn't remove that video.");
+    }
+  };
+
   const loadAll = async () => {
     try {
       const [videos, dash] = await Promise.all([
@@ -568,6 +589,15 @@ export default function V2Dashboard() {
               >
                 Open recall
               </a>
+              {continueCard.video.isUserCustom && (
+                <button
+                  className="v2-link-btn"
+                  style={{ color: 'var(--v2-danger, #c0392b)' }}
+                  onClick={() => handleRemovePack(continueCard.video)}
+                >
+                  Remove from library
+                </button>
+              )}
             </div>
           </div>
         </section>
@@ -608,13 +638,24 @@ export default function V2Dashboard() {
                       (e.currentTarget as HTMLImageElement).style.display = 'none';
                     }}
                   />
-                  <button
-                    className="v2-more"
-                    aria-label="More options"
-                    onClick={e => { e.stopPropagation(); showToast('Card menu coming soon.'); }}
-                  >
-                    ⋯
-                  </button>
+                  {card.video.isUserCustom ? (
+                    <button
+                      className="v2-more"
+                      aria-label={`Remove "${card.video.title}" from library`}
+                      title="Remove from library"
+                      onClick={e => { e.stopPropagation(); handleRemovePack(card.video); }}
+                    >
+                      ✕
+                    </button>
+                  ) : (
+                    <button
+                      className="v2-more"
+                      aria-label="More options"
+                      onClick={e => { e.stopPropagation(); showToast('Card menu coming soon.'); }}
+                    >
+                      ⋯
+                    </button>
+                  )}
                 </div>
                 <h3>{card.video.title}</h3>
                 <div className="v2-creator">{card.video.channel}</div>

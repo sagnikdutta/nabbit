@@ -3,6 +3,8 @@ import { V2Shell } from '../V2Shell';
 import { V2Button, V2Chip, V2Progress } from '../components/primitives';
 import { useV2Theme } from '../useTheme';
 import { useV2Library } from '../useLibrary';
+import { api } from '../../lib/api';
+import type { Video } from '../../lib/types';
 import './pages.css';
 
 /*
@@ -16,9 +18,20 @@ const FILTERS: Filter[] = ['All', 'Not started', 'In progress', 'Completed'];
 
 export default function V2LibraryPage() {
   const [theme, toggleTheme] = useV2Theme();
-  const { loading, cards, shell } = useV2Library();
+  const { loading, cards, shell, reload } = useV2Library();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('All');
+
+  const handleRemove = async (video: Video) => {
+    const ok = window.confirm(`Remove "${video.title}" from your library?\n\nThis also deletes any attempts and recall items tied to its drills. This cannot be undone.`);
+    if (!ok) return;
+    const { removed } = await api.removeCustomPack(video.id);
+    if (removed) {
+      await reload();
+    } else {
+      window.alert("Couldn't remove that video — built-in videos aren't removable.");
+    }
+  };
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -77,26 +90,55 @@ export default function V2LibraryPage() {
         ) : (
           <div className="v2-lib-grid">
             {shown.map(c => (
-              <a
-                key={c.video.id}
-                className="v2-lib-card"
-                href={c.nextChallengeId ? `/v2/challenge/${encodeURIComponent(c.nextChallengeId)}` : '/v2/library'}
-              >
-                <img
-                  src={c.video.thumbnailUrl}
-                  alt=""
-                  onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                />
-                <h3>{c.video.title}</h3>
-                <div className="meta">{c.video.channel} · {c.video.duration}</div>
-                <div className="row">
-                  <V2Progress value={c.progress} label={`${c.video.title} progress`} />
-                  <span>{c.drillsDone} / {c.drillsTotal}</span>
-                </div>
-                <div className="tags">
-                  {c.tags.map(t => <V2Chip key={t}>{t}</V2Chip>)}
-                </div>
-              </a>
+              <div key={c.video.id} style={{ position: 'relative' }}>
+                <a
+                  className="v2-lib-card"
+                  href={c.nextChallengeId ? `/v2/challenge/${encodeURIComponent(c.nextChallengeId)}` : '/v2/library'}
+                >
+                  <img
+                    src={c.video.thumbnailUrl}
+                    alt=""
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                  />
+                  <h3>{c.video.title}</h3>
+                  <div className="meta">{c.video.channel} · {c.video.duration}</div>
+                  <div className="row">
+                    <V2Progress value={c.progress} label={`${c.video.title} progress`} />
+                    <span>{c.drillsDone} / {c.drillsTotal}</span>
+                  </div>
+                  <div className="tags">
+                    {c.tags.map(t => <V2Chip key={t}>{t}</V2Chip>)}
+                  </div>
+                </a>
+                {c.video.isUserCustom && (
+                  <button
+                    type="button"
+                    aria-label={`Remove "${c.video.title}" from library`}
+                    title="Remove from library"
+                    onClick={() => handleRemove(c.video)}
+                    style={{
+                      position: 'absolute',
+                      top: 8,
+                      right: 8,
+                      width: 28,
+                      height: 28,
+                      borderRadius: '50%',
+                      border: '1px solid var(--v2-border, rgba(0,0,0,0.1))',
+                      background: 'rgba(255,255,255,0.9)',
+                      color: 'var(--v2-text, #1a1f36)',
+                      cursor: 'pointer',
+                      fontSize: 14,
+                      lineHeight: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      zIndex: 1,
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         )}

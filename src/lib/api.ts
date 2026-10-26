@@ -313,6 +313,30 @@ class LocalStore {
     this.save();
   }
 
+  /**
+   * Remove a user-imported custom video from the library, together with every
+   * trace of local progress tied to its challenges (recall items, attempts,
+   * challenge rows, video row). Curated videos (anything without a matching
+   * row in customVideos) are a no-op — those are shipped content, not
+   * removable.
+   */
+  public removeCustomPack(videoId: string): { removedVideo: boolean; removedChallengeIds: string[] } {
+    const video = this.customVideos.find(v => v.id === videoId);
+    if (!video) {
+      return { removedVideo: false, removedChallengeIds: [] };
+    }
+    const removedChallengeIds = this.customChallenges
+      .filter(c => c.videoId === videoId)
+      .map(c => c.id);
+    const idSet = new Set(removedChallengeIds);
+    this.customVideos = this.customVideos.filter(v => v.id !== videoId);
+    this.customChallenges = this.customChallenges.filter(c => !idSet.has(c.id));
+    this.items = this.items.filter(i => !idSet.has(i.challengeId));
+    this.attempts = this.attempts.filter(a => !idSet.has(a.challengeId));
+    this.save();
+    return { removedVideo: true, removedChallengeIds };
+  }
+
   public getAttempts(): Attempt[] {
     return this.attempts;
   }
@@ -914,6 +938,31 @@ export const api = {
 
   async resetData() {
     localStore.reset();
+  },
+
+  /**
+   * Remove a user-imported custom video from the library AND every trace of
+   * local progress tied to its challenges. For signed-in users on Supabase,
+   * also deletes the corresponding attempts + recall_items rows (own-row
+   * delete allowed by the RLS "own * rw" policies in migration 0004).
+   * Returns false if the video wasn't a custom import (curated videos can't
+   * be removed — they're shipped content, not user data).
+   */
+  async removeCustomPack(videoId: string): Promise<{ removed: boolean }> {
+    const { removedVideo, removedChallengeIds } = localStore.removeCustomPack(videoId);
+    if (!removedVideo) return { removed: false };
+
+    // Best-effort server-side cleanup for signed-in Supabase users. Failures
+    // are logged but don't fail the removal — local state is already clean.
+    if (useSupabase() && supabase && removedChallengeIds.length > 0) {
+      try {
+        await supabase.from('attempts').delete().in('challenge_id', removedChallengeIds);
+        await supabase.from('recall_items').delete().in('challenge_id', removedChallengeIds);
+      } catch (err) {
+        console.warn('[Nabbit] Supabase cleanup for removed pack failed:', err instanceof Error ? err.message.slice(0, 160) : err);
+      }
+    }
+    return { removed: true };
   },
 
   getSimulatedOffset(): number {
