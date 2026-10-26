@@ -230,27 +230,47 @@
 .v2-auth-card-switch a:hover,
 .v2-auth-card-switch button:hover { text-decoration: underline; }
 
+/* Wrapper so the hint can be absolutely positioned over/under the Google
+ * button without pushing the "or" divider around. */
+.v2-auth-oauth-slot {
+  position: relative;
+}
+
+/* Appears only on hover/focus of the Google button (or the slot). Floats
+ * below the button; absolute so it doesn't reserve layout space when hidden. */
 .v2-auth-oauth-hint {
-  margin: -10px 0 20px;
-  padding: 10px 14px;
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.35);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  padding: 8px 12px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.4);
   border-left: 3px solid #f59e0b;
   border-radius: 8px;
   color: var(--text, #1a1f36);
   font-size: 13px;
   line-height: 1.4;
-  text-align: left;
+  font-weight: 500;
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-weight: 500;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+  pointer-events: none;
+  z-index: 10;
 }
-.v2-auth-oauth-hint::before {
-  content: "⚠";
-  font-size: 16px;
-  color: #f59e0b;
-  flex-shrink: 0;
+.v2-auth-oauth-hint span { color: #f59e0b; font-size: 15px; flex-shrink: 0; }
+
+/* Show on hover of the slot (button) or when the button inside has focus. */
+.v2-auth-oauth-slot:hover .v2-auth-oauth-hint,
+.v2-auth-oauth-slot:focus-within .v2-auth-oauth-hint {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 .v2-auth-oauth {

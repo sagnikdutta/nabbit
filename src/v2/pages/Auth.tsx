@@ -328,14 +328,24 @@ export default function V2AuthPage({
             <>
               <div className="v2-auth-oauth">
                 {GOOGLE_OAUTH_ENABLED && (
-                  <button
-                    type="button"
-                    className="v2-oauth-btn"
-                    disabled={oauthBusy !== null}
-                    onClick={() => handleOAuth('google')}
-                  >
-                    <GoogleGlyph /> {oauthBusy === 'google' ? 'Redirecting…' : 'Continue with Google'}
-                  </button>
+                  <div className="v2-auth-oauth-slot">
+                    <button
+                      type="button"
+                      className="v2-oauth-btn"
+                      disabled={oauthBusy !== null}
+                      onClick={() => handleOAuth('google')}
+                      aria-describedby="oauth-google-hint"
+                    >
+                      <GoogleGlyph /> {oauthBusy === 'google' ? 'Redirecting…' : 'Continue with Google'}
+                    </button>
+                    <div
+                      id="oauth-google-hint"
+                      className="v2-auth-oauth-hint"
+                      role="tooltip"
+                    >
+                      <span aria-hidden="true">⚠</span> We'll sign you in or create an account for you.
+                    </div>
+                  </div>
                 )}
                 {GITHUB_OAUTH_ENABLED && (
                   <button
@@ -348,7 +358,6 @@ export default function V2AuthPage({
                   </button>
                 )}
               </div>
-              <p className="v2-auth-oauth-hint">We'll sign you in or create an account for you.</p>
 
               <div className="v2-auth-divider" role="separator">
                 <span>or</span>
