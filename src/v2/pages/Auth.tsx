@@ -523,12 +523,6 @@ export default function V2AuthPage({
               </button>
             </div>
           )}
-
-          <div className="v2-auth-cancel">
-            <button type="button" onClick={() => (window.location.href = '/v1/#/')}>
-              ← Return to the classic view
-            </button>
-          </div>
         </section>
       </main>
 
