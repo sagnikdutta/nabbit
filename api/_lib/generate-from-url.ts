@@ -26,7 +26,9 @@ const RETRY_DEADLINE_MS = 42_000;
 
 function isTransient(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
-  return /"code":\s*(429|500|503|504)|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(msg);
+  // 404/NOT_FOUND counts as transient so a stale GEMINI_MODEL falls through to
+  // discoverFallbackModels() instead of hard-erroring the whole import.
+  return /"code":\s*(404|429|500|503|504)|NOT_FOUND|not found|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(msg);
 }
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -74,7 +76,9 @@ async function withModelFallback<T>(
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return await call(GEMINI_MODEL);
+      const result = await call(GEMINI_MODEL);
+      if (attempt > 0) console.log(`[Nabbit] Gemini ${GEMINI_MODEL} succeeded on retry ${attempt + 1}`);
+      return result;
     } catch (err) {
       if (!isTransient(err)) throw err;
       firstTransient ??= err;
@@ -91,12 +95,125 @@ async function withModelFallback<T>(
     if (overBudget()) break;
     try {
       console.warn(`[Nabbit] Trying fallback model ${model}`);
-      return await call(model);
+      const result = await call(model);
+      console.log(`[Nabbit] Gemini ${model} succeeded (used as fallback for ${GEMINI_MODEL})`);
+      return result;
     } catch (err) {
       console.warn(`[Nabbit] Fallback ${model} failed:`, err instanceof Error ? err.message.slice(0, 160) : err);
     }
   }
   throw firstTransient;
+}
+
+// Shape of a single Challenge in the response schema. Hoisted so the main
+// generation call and the reroll path share one source of truth.
+const CHALLENGE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    concept: { type: Type.STRING },
+    chapter: { type: Type.STRING },
+    timestampSeconds: { type: Type.INTEGER },
+    timestampFormatted: { type: Type.STRING },
+    difficulty: { type: Type.STRING },
+    filename: { type: Type.STRING },
+    fileType: { type: Type.STRING },
+    buggyCode: { type: Type.STRING },
+    buggyLines: { type: Type.ARRAY, items: { type: Type.INTEGER } },
+    fixOptions: { type: Type.ARRAY, items: { type: Type.STRING } },
+    correctOption: { type: Type.INTEGER },
+    explanation: { type: Type.STRING },
+    correctCode: { type: Type.STRING },
+    takeaway: { type: Type.STRING },
+    hints: {
+      type: Type.OBJECT,
+      properties: {
+        conceptNudge: { type: Type.STRING },
+        videoTimestampSeconds: { type: Type.INTEGER },
+        inspectionClue: { type: Type.STRING },
+      },
+      required: ['conceptNudge', 'videoTimestampSeconds', 'inspectionClue'],
+    },
+  },
+  required: [
+    'concept', 'chapter', 'timestampSeconds', 'timestampFormatted', 'difficulty',
+    'filename', 'fileType', 'buggyCode', 'buggyLines', 'fixOptions',
+    'correctOption', 'explanation', 'correctCode', 'takeaway', 'hints',
+  ],
+};
+
+type Validation = { valid: true; lineCount: number } | { valid: false; reason: string; lineCount?: number };
+
+/**
+ * Guard a model-returned challenge against the invariants the UI depends on.
+ * Returns a reason on failure so a reroll can echo it back into the next prompt.
+ */
+function validateChallenge(c: any): Validation {
+  if (!c || typeof c.buggyCode !== 'string' || !c.buggyCode.trim()) {
+    return { valid: false, reason: 'buggyCode is missing or empty' };
+  }
+  if (!Array.isArray(c.fixOptions) || c.fixOptions.length < 2) {
+    return { valid: false, reason: 'fixOptions must have at least 2 items' };
+  }
+  if (!Number.isInteger(c.correctOption) || c.correctOption < 0 || c.correctOption >= c.fixOptions.length) {
+    return { valid: false, reason: `correctOption must be an integer in [0, ${c.fixOptions.length - 1}]` };
+  }
+  const lineCount = c.buggyCode.split('\n').length;
+  const linesOk = Array.isArray(c.buggyLines)
+    && c.buggyLines.length > 0
+    && c.buggyLines.every((n: any) => Number.isInteger(n) && n >= 1 && n <= lineCount);
+  if (!linesOk) {
+    return { valid: false, reason: `buggyLines must be a non-empty integer array within [1, ${lineCount}]`, lineCount };
+  }
+  return { valid: true, lineCount };
+}
+
+/**
+ * Regenerate a single drill when the first attempt failed validation. Echoes the
+ * specific failure reason back into the prompt so the model stops repeating it.
+ * One shot only — the overall call budget stays bounded by RETRY_DEADLINE_MS.
+ */
+async function rerollSingleChallenge(
+  ai: GoogleGenAI,
+  startedAt: number,
+  ctx: { title: string; channel: string; concept: string; chapter: string; previousReason: string; stackHint: string },
+): Promise<any | null> {
+  const prompt = `Regenerate ONE bug-hunt drill for Nabbit. The previous attempt was invalid: "${ctx.previousReason}".
+
+Video: "${ctx.title}"${ctx.channel ? ` by ${ctx.channel}` : ''}
+Stack: ${ctx.stackHint}
+Concept: "${ctx.concept}"
+Chapter: "${ctx.chapter}"
+
+Return a SINGLE challenge object as JSON. Hard constraints:
+- buggyCode: a realistic multi-line code snippet (at least 5 lines) with EXACTLY ONE subtle planted flaw (not a typo).
+- buggyLines: non-empty array of 1-indexed integers, each within the actual line count of buggyCode.
+- fixOptions: exactly 4 plausible fix strings; exactly 1 is the correct fix.
+- correctOption: integer in [0, 3] identifying the correct fix.
+- explanation, correctCode, takeaway, hints: as before. The flaw must be a real conceptual bug, not a syntax error.`;
+
+  try {
+    const response = await withModelFallback(ai, startedAt, model => ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        maxOutputTokens: 2048,
+        temperature: 0.4,
+        responseSchema: CHALLENGE_SCHEMA,
+      },
+    }));
+    if (!response.text) return null;
+    const parsed = JSON.parse(response.text);
+    const v = validateChallenge(parsed);
+    if (!v.valid) {
+      console.warn('[Nabbit] Reroll still invalid:', v.reason);
+      return null;
+    }
+    return parsed;
+  } catch (err) {
+    console.warn('[Nabbit] Reroll failed:', err instanceof Error ? err.message.slice(0, 160) : err);
+    return null;
+  }
 }
 
 export interface GenerateResult {
@@ -186,6 +303,8 @@ ${searchContext ? `- Grounded Tutorial Search Context: "${searchContext}"
 ` : ''}
 Base every challenge on concepts actually taught in THIS video. Do not invent generic topics; if you cannot determine what the video teaches, return an empty challenges array.
 
+Generate EXACTLY 5 bug-hunt drills (6 or 7 only if the video clearly covers that many distinct, teachable concepts). Return each as an item in the "challenges" array. Never return fewer than 5 unless you truly cannot determine the video's content — in which case return an empty array.
+
 CRITICAL DOMAIN RULES:
 1. If the video is about AWS, Cloud, or Cloud Security (IAM, S3, EC2, Lambda, VPC):
  - You MUST generate realistic infrastructure configuration or policy code!
@@ -216,6 +335,11 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
           contents: prompt,
           config: {
             responseMimeType: 'application/json',
+            // Output cap raised so 5+ drills (each ~1.5–2K tokens) fit in a single response;
+            // without this the model closed the array early at ~2 items. Lower temperature
+            // keeps planted bugs teachable (deterministic) rather than creative.
+            maxOutputTokens: 8192,
+            temperature: 0.4,
             responseSchema: {
               type: Type.OBJECT,
               properties: {
@@ -224,54 +348,14 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
                 stack: { type: Type.STRING },
                 duration: { type: Type.STRING },
                 description: { type: Type.STRING },
+                // minItems/maxItems hard-pin the count server-side so the model can't
+                // "close the array early" when it approaches the output cap.
                 challenges: {
                   type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      concept: { type: Type.STRING },
-                      chapter: { type: Type.STRING },
-                      timestampSeconds: { type: Type.INTEGER },
-                      timestampFormatted: { type: Type.STRING },
-                      difficulty: { type: Type.STRING },
-                      filename: { type: Type.STRING },
-                      fileType: { type: Type.STRING },
-                      buggyCode: { type: Type.STRING },
-                      buggyLines: { type: Type.ARRAY, items: { type: Type.INTEGER } },
-                      fixOptions: { type: Type.ARRAY, items: { type: Type.STRING } },
-                      correctOption: { type: Type.INTEGER },
-                      explanation: { type: Type.STRING },
-                      correctCode: { type: Type.STRING },
-                      takeaway: { type: Type.STRING },
-                      hints: {
-                        type: Type.OBJECT,
-                        properties: {
-                          conceptNudge: { type: Type.STRING },
-                          videoTimestampSeconds: { type: Type.INTEGER },
-                          inspectionClue: { type: Type.STRING },
-                        },
-                        required: ['conceptNudge', 'videoTimestampSeconds', 'inspectionClue'],
-                      },
-                    },
-                    required: [
-                      'concept',
-                      'chapter',
-                      'timestampSeconds',
-                      'timestampFormatted',
-                      'difficulty',
-                      'filename',
-                      'fileType',
-                      'buggyCode',
-                      'buggyLines',
-                      'fixOptions',
-                      'correctOption',
-                      'explanation',
-                      'correctCode',
-                      'takeaway',
-                      'hints',
-                    ],
-                  },
-                },
+                  minItems: 5,
+                  maxItems: 7,
+                  items: CHALLENGE_SCHEMA,
+                } as any,
               },
               required: ['title', 'channel', 'stack', 'duration', 'description', 'challenges'],
             },
@@ -281,13 +365,44 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
         const dataText = response.text;
         if (dataText) {
           const parsedData = JSON.parse(dataText);
-          const validChallenges = (Array.isArray(parsedData.challenges) ? parsedData.challenges : []).filter((c: any) => {
-            if (!c || typeof c.buggyCode !== 'string' || !c.buggyCode.trim()) return false;
-            if (!Array.isArray(c.fixOptions) || c.fixOptions.length < 2) return false;
-            if (!Number.isInteger(c.correctOption) || c.correctOption < 0 || c.correctOption >= c.fixOptions.length) return false;
-            const lineCount = c.buggyCode.split('\n').length;
-            return Array.isArray(c.buggyLines) && c.buggyLines.length > 0 && c.buggyLines.every((n: any) => Number.isInteger(n) && n >= 1 && n <= lineCount);
-          });
+          const rawChallenges = Array.isArray(parsedData.challenges) ? parsedData.challenges : [];
+          const validChallenges: any[] = [];
+          const rerollTargets: Array<{ raw: any; reason: string }> = [];
+
+          for (const c of rawChallenges) {
+            const v = validateChallenge(c);
+            if (v.valid) {
+              validChallenges.push(c);
+            } else {
+              rerollTargets.push({ raw: c, reason: v.reason });
+            }
+          }
+
+          // One parallel reroll per invalid drill — each small, bounded call is far less
+          // likely to truncate than the single large one. Promise.allSettled so a single
+          // overloaded reroll doesn't drop the batch.
+          if (rerollTargets.length > 0) {
+            console.warn(`[Nabbit] ${rerollTargets.length}/${rawChallenges.length} drills invalid — rerolling in parallel`);
+            const stackHint = parsedData.stack || 'Software Engineering';
+            const title = oembedTitle || parsedData.title || '';
+            const channel = oembedChannel || parsedData.channel || '';
+            const rerolled = await Promise.allSettled(
+              rerollTargets.map(t => rerollSingleChallenge(ai, startedAt, {
+                title,
+                channel,
+                concept: t.raw?.concept || 'Core concept from the tutorial',
+                chapter: t.raw?.chapter || 'Chapter under review',
+                previousReason: t.reason,
+                stackHint,
+              })),
+            );
+            for (const r of rerolled) {
+              if (r.status === 'fulfilled' && r.value) validChallenges.push(r.value);
+            }
+          }
+
+          console.log(`[Nabbit] Drill generation complete: ${validChallenges.length} valid of ${rawChallenges.length} initial (youtubeId=${youtubeId})`);
+
           if (validChallenges.length === 0) {
             return reply(422, {
               error: "Couldn't build reliable drills from this video. Try another video or add a topic hint.",
