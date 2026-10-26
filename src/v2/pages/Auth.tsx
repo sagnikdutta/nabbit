@@ -38,10 +38,14 @@ import { UserAccount } from '../../lib/types';
 type Mode = 'signin' | 'signup';
 type Theme = 'light' | 'dark';
 
-// Social sign-in is wired (api.signInWithOAuth) and the Google provider is
-// enabled in Supabase (27 Oct) — buttons are live. GitHub still hidden by
-// per-button checks until that provider is configured too.
-const OAUTH_ENABLED = true;
+// Per-provider gates. Social sign-in is wired via api.signInWithOAuth; flip
+// the per-provider flag once the provider is enabled in Supabase AND its
+// OAuth client is created in that provider's console. GOOGLE_OAUTH_ENABLED
+// was turned on 27 Oct. GITHUB_OAUTH_ENABLED stays off until a GitHub OAuth
+// app is registered and its client ID + secret added to Supabase.
+const GOOGLE_OAUTH_ENABLED = true;
+const GITHUB_OAUTH_ENABLED = false;
+const OAUTH_ENABLED = GOOGLE_OAUTH_ENABLED || GITHUB_OAUTH_ENABLED;
 
 const COUNTRY_CODES = [
   { code: '+1', flag: '\uD83C\uDDFA\uD83C\uDDF8' },
@@ -323,22 +327,26 @@ export default function V2AuthPage({
           {OAUTH_ENABLED && (
             <>
               <div className="v2-auth-oauth">
-                <button
-                  type="button"
-                  className="v2-oauth-btn"
-                  disabled={oauthBusy !== null}
-                  onClick={() => handleOAuth('google')}
-                >
-                  <GoogleGlyph /> {oauthBusy === 'google' ? 'Redirecting…' : 'Continue with Google'}
-                </button>
-                <button
-                  type="button"
-                  className="v2-oauth-btn"
-                  disabled={oauthBusy !== null}
-                  onClick={() => handleOAuth('github')}
-                >
-                  <GitHubGlyph /> {oauthBusy === 'github' ? 'Redirecting…' : 'Continue with GitHub'}
-                </button>
+                {GOOGLE_OAUTH_ENABLED && (
+                  <button
+                    type="button"
+                    className="v2-oauth-btn"
+                    disabled={oauthBusy !== null}
+                    onClick={() => handleOAuth('google')}
+                  >
+                    <GoogleGlyph /> {oauthBusy === 'google' ? 'Redirecting…' : 'Continue with Google'}
+                  </button>
+                )}
+                {GITHUB_OAUTH_ENABLED && (
+                  <button
+                    type="button"
+                    className="v2-oauth-btn"
+                    disabled={oauthBusy !== null}
+                    onClick={() => handleOAuth('github')}
+                  >
+                    <GitHubGlyph /> {oauthBusy === 'github' ? 'Redirecting…' : 'Continue with GitHub'}
+                  </button>
+                )}
               </div>
 
               <div className="v2-auth-divider" role="separator">
