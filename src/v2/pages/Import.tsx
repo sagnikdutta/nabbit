@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
+import type { ImportFallbackSuggestion } from '../../lib/api';
 import { Challenge, Video } from '../../lib/types';
 import { V2Shell } from '../V2Shell';
 import { V2Button, V2Panel } from '../components/primitives';
@@ -25,6 +26,7 @@ export default function V2ImportPage() {
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [fallbackSuggestions, setFallbackSuggestions] = useState<ImportFallbackSuggestion[]>([]);
   const [result, setResult] = useState<Result | null>(null);
   const timer = useRef<number | null>(null);
 
@@ -39,6 +41,7 @@ export default function V2ImportPage() {
     }
     setBusy(true);
     setError(null);
+    setFallbackSuggestions([]);
     setResult(null);
     setElapsed(0);
     const started = Date.now();
@@ -50,6 +53,9 @@ export default function V2ImportPage() {
       setTopic('');
     } catch (err: any) {
       setError(err?.message || 'Could not generate drills from that URL.');
+      if (Array.isArray(err?.fallbackSuggestions)) {
+        setFallbackSuggestions(err.fallbackSuggestions as ImportFallbackSuggestion[]);
+      }
     } finally {
       if (timer.current) window.clearInterval(timer.current);
       timer.current = null;
@@ -131,6 +137,26 @@ export default function V2ImportPage() {
           <div className="v2-import-error" role="alert">
             <strong>Import failed</strong>
             <span>{error}</span>
+            {fallbackSuggestions.length > 0 && (
+              <div className="v2-import-fallback">
+                <strong className="v2-small">Try one of these in the meantime</strong>
+                <ul>
+                  {fallbackSuggestions.map(s => (
+                    <li key={s.challengeId}>
+                      <a href={`/v2/challenge/${encodeURIComponent(s.challengeId)}`}>
+                        {s.concept}
+                      </a>
+                      <span className="v2-small v2-muted">
+                        {' · '}{s.stack}{' · '}{s.difficulty}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <V2Button variant="link" onClick={() => submit(new Event('submit') as unknown as FormEvent)} disabled={busy}>
+                  Retry import
+                </V2Button>
+              </div>
+            )}
           </div>
         )}
 

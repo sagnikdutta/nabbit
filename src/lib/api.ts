@@ -942,7 +942,9 @@ export const api = {
       throw new Error('Please enter a valid YouTube video URL or ID');
     }
     // No canned-template fallback: drills that aren't about this video are worse
-    // than a clear error. The server returns { error, code } on any failure.
+    // than a clear error. The server returns { error, code, fallbackSuggestions? }
+    // on failure — fallbackSuggestions are 3 curated-library drills the user can
+    // open while the upstream provider is unavailable.
     let res: Response;
     try {
       res = await fetch('/api/videos/generate-from-url', {
@@ -955,22 +957,40 @@ export const api = {
     }
     const isJson = (res.headers.get('content-type') || '').includes('application/json');
     const data = isJson ? await res.json().catch(() => null) : null;
+    const throwWithSuggestions = (message: string): never => {
+      const err = new Error(message);
+      if (Array.isArray(data?.fallbackSuggestions)) {
+        (err as any).fallbackSuggestions = data.fallbackSuggestions;
+      }
+      if (data?.code) (err as any).code = data.code;
+      throw err;
+    };
     if (!res.ok || !data) {
       // A non-JSON reply means /api isn't served by the Nabbit server at all
       // (static hosting, or `vite preview`, which serves index.html for /api).
       if (data?.detail) console.warn('[Nabbit] import detail:', data.detail);
-      throw new Error(data?.error || 'Server issue. Video import is unavailable right now, please try again later.');
+      throwWithSuggestions(data?.error || 'Server issue. Video import is unavailable right now, please try again later.');
     }
     // Older servers answered with a canned template pack unrelated to the video.
     // Never accept it: tell the user to restart/redeploy the server instead.
     if (data.source === 'template') {
-      throw new Error('Server issue. Video import is unavailable right now, please try again later.');
+      throwWithSuggestions('Server issue. Video import is unavailable right now, please try again later.');
     }
     if (data.detail) console.warn('[Nabbit] import detail:', data.detail);
     if (!data.video || !Array.isArray(data.challenges) || data.challenges.length === 0) {
-      throw new Error("Couldn't build drills from this video. Try another video.");
+      throwWithSuggestions("Couldn't build drills from this video. Try another video.");
     }
     localStore.addCustomPack(data.video, data.challenges);
     return data;
   },
 };
+
+/** 3 curated-library drill suggestions the server attaches when AI generation fails. */
+export interface ImportFallbackSuggestion {
+  challengeId: string;
+  concept: string;
+  videoId: string;
+  videoTitle: string;
+  stack: string;
+  difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+}

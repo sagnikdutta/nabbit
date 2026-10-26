@@ -1,37 +1,81 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import { extractYouTubeVideoId } from '../../src/lib/youtube.js';
 import type { Challenge, Video } from '../../src/lib/types.js';
+import { CURATED_CHALLENGES, CURATED_VIDEOS } from '../../src/content/data.js';
 
 /*
  * Video -> drills generation, shared by the Express server (server.ts) and the
  * Vercel serverless function (api/videos/generate-from-url.ts). Returns a plain
- * { status, json } so each host can send it its own way. There is deliberately
- * no canned-template fallback: failures are errors.
+ * { status, json } so each host can send it its own way.
+ *
+ * Provider chain: Gemini (primary; two attempts on primary model, then a
+ * discovered Gemini fallback model) -> Groq (secondary; different vendor,
+ * fires when GROQ_API_KEY is set and Gemini has exhausted its budget) ->
+ * error with fallbackSuggestions (3 curated drills from the library so the
+ * user has something to do while we fix the upstream).
+ *
+ * Every provider call is wrapped in withTimeout so a single hung call can
+ * never eat the full Vercel budget. There is deliberately no canned-template
+ * fallback pack: a pack labelled as this video that isn't about this video
+ * is worse than an error.
  */
 
-// The model this endpoint has always used; override per environment with GEMINI_MODEL.
+// Primary provider: Gemini. Override per environment with GEMINI_MODEL.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-// Optional second model for when the primary is overloaded. No hardcoded default: older
-// models (e.g. gemini-2.5-flash) return 404 for new API keys, so when unset the code
-// discovers a usable model from the key's own model list instead.
+// Optional second Gemini model for when the primary is overloaded. No hardcoded
+// default: older models (e.g. gemini-2.5-flash) return 404 for new API keys, so
+// when unset the code discovers a usable model from the key's own model list.
 const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || '';
 // Google Search grounding costs an extra request per import and is the first quota a
 // free-tier key runs out of, so it is opt-in: set GEMINI_SEARCH_GROUNDING=1 to enable.
 // Without it the prompt still carries the video's real title and channel (oEmbed).
 const SEARCH_GROUNDING = /^(1|true|on)$/i.test(process.env.GEMINI_SEARCH_GROUNDING || '');
+
+// Secondary provider: Groq (OpenAI-compatible Chat Completions API). Fires only
+// when Gemini has thrown or timed out past its own retry budget. Free tier is
+// usually up when Google is overloaded, which is the whole point.
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
+
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Vercel kills the function at maxDuration (60s in vercel.json); stop retrying before that.
-const RETRY_DEADLINE_MS = 42_000;
+// Vercel kills the function at maxDuration (60s in vercel.json). Budget layout:
+//   up to 2 Gemini attempts on primary (15s each, 1.5s sleep) +
+//   up to 1 Gemini fallback-model attempt (15s) +
+//   up to 1 Groq attempt (18s) + rerolls (bounded by RETRY_DEADLINE_MS)
+// so the whole chain fits under 60s even if every attempt uses its full budget.
+const RETRY_DEADLINE_MS = 50_000;
+const GEMINI_CALL_TIMEOUT_MS = 15_000;
+const GROQ_CALL_TIMEOUT_MS = 18_000;
 
 function isTransient(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   // 404/NOT_FOUND counts as transient so a stale GEMINI_MODEL falls through to
   // discoverFallbackModels() instead of hard-erroring the whole import.
-  return /"code":\s*(404|429|500|503|504)|NOT_FOUND|not found|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(msg);
+  // nabbit_timeout is our own synthetic timeout; always transient.
+  return /"code":\s*(404|429|500|503|504)|NOT_FOUND|not found|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded|nabbit_timeout/i.test(msg);
 }
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+/**
+ * Hard per-call timeout. The underlying promise keeps running in Node (we have
+ * no SDK-level abort for Gemini) but we stop waiting on it, which is what
+ * matters: the next attempt or provider gets to go, and Vercel's function budget
+ * is not held hostage by one hung call.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`nabbit_timeout: ${label} exceeded ${ms}ms`));
+    }, ms);
+    promise.then(
+      value => { clearTimeout(timer); resolve(value); },
+      err => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
 
 /**
  * Other text models this API key can use, newest flash/pro first. Used only
@@ -76,13 +120,14 @@ async function withModelFallback<T>(
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const result = await call(GEMINI_MODEL);
+      const result = await withTimeout(call(GEMINI_MODEL), GEMINI_CALL_TIMEOUT_MS, `gemini ${GEMINI_MODEL}`);
       if (attempt > 0) console.log(`[Nabbit] Gemini ${GEMINI_MODEL} succeeded on retry ${attempt + 1}`);
       return result;
     } catch (err) {
       if (!isTransient(err)) throw err;
       firstTransient ??= err;
-      console.warn(`[Nabbit] Gemini ${GEMINI_MODEL} overloaded (attempt ${attempt + 1}/2)`);
+      const why = err instanceof Error && /nabbit_timeout/.test(err.message) ? 'timed out' : 'overloaded';
+      console.warn(`[Nabbit] Gemini ${GEMINI_MODEL} ${why} (attempt ${attempt + 1}/2)`);
       if (overBudget()) throw firstTransient;
       if (attempt === 0) await sleep(1500);
     }
@@ -95,7 +140,7 @@ async function withModelFallback<T>(
     if (overBudget()) break;
     try {
       console.warn(`[Nabbit] Trying fallback model ${model}`);
-      const result = await call(model);
+      const result = await withTimeout(call(model), GEMINI_CALL_TIMEOUT_MS, `gemini ${model}`);
       console.log(`[Nabbit] Gemini ${model} succeeded (used as fallback for ${GEMINI_MODEL})`);
       return result;
     } catch (err) {
@@ -216,6 +261,140 @@ Return a SINGLE challenge object as JSON. Hard constraints:
   }
 }
 
+/**
+ * Low-level Groq chat-completion call. Groq is OpenAI-compatible so we hit it
+ * with raw fetch — no new SDK dependency. JSON mode is on so the body comes
+ * back as a single JSON string we can parse.
+ */
+async function callGroq(prompt: string, maxTokens: number): Promise<string> {
+  const res = await fetch(GROQ_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${GROQ_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      temperature: 0.4,
+      max_tokens: maxTokens,
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`groq http ${res.status}: ${detail.slice(0, 200)}`);
+  }
+  const data = await res.json() as any;
+  const text = data?.choices?.[0]?.message?.content;
+  if (typeof text !== 'string' || !text.trim()) {
+    throw new Error('groq returned empty content');
+  }
+  return text;
+}
+
+/**
+ * Groq-side pack generation. Uses the same prompt the Gemini call does, with
+ * an extra line insisting on the exact JSON shape (Groq doesn't enforce
+ * responseSchema the way Gemini does). Validation + reroll still catch drift.
+ */
+async function generateGroqPack(prompt: string): Promise<any> {
+  if (!GROQ_API_KEY) throw new Error('groq not configured');
+  const packPrompt = `${prompt}
+
+IMPORTANT (Groq provider): Return a single JSON object with EXACTLY this top-level shape, no extra keys, no prose:
+{
+  "title": string,
+  "channel": string,
+  "stack": string,
+  "duration": string,
+  "description": string,
+  "challenges": [ ... 5 to 7 items, each with the full challenge shape above ... ]
+}`;
+  const text = await withTimeout(callGroq(packPrompt, 8192), GROQ_CALL_TIMEOUT_MS, `groq ${GROQ_MODEL}`);
+  return JSON.parse(text);
+}
+
+/**
+ * Groq-side single-drill reroll. Mirrors rerollSingleChallenge but hits Groq.
+ */
+async function rerollSingleChallengeGroq(
+  ctx: { title: string; channel: string; concept: string; chapter: string; previousReason: string; stackHint: string },
+): Promise<any | null> {
+  if (!GROQ_API_KEY) return null;
+  const prompt = `Regenerate ONE bug-hunt drill for Nabbit. The previous attempt was invalid: "${ctx.previousReason}".
+
+Video: "${ctx.title}"${ctx.channel ? ` by ${ctx.channel}` : ''}
+Stack: ${ctx.stackHint}
+Concept: "${ctx.concept}"
+Chapter: "${ctx.chapter}"
+
+Return a SINGLE challenge object as JSON with these exact fields:
+concept, chapter, timestampSeconds, timestampFormatted, difficulty, filename, fileType, buggyCode, buggyLines, fixOptions, correctOption, explanation, correctCode, takeaway, hints{conceptNudge, videoTimestampSeconds, inspectionClue}.
+
+Hard constraints:
+- buggyCode: a realistic multi-line code snippet (at least 5 lines) with EXACTLY ONE subtle planted flaw (not a typo).
+- buggyLines: non-empty array of 1-indexed integers, each within the actual line count of buggyCode.
+- fixOptions: exactly 4 plausible fix strings; exactly 1 is the correct fix.
+- correctOption: integer in [0, 3] identifying the correct fix.`;
+  try {
+    const text = await withTimeout(callGroq(prompt, 2048), GROQ_CALL_TIMEOUT_MS, `groq reroll ${GROQ_MODEL}`);
+    const parsed = JSON.parse(text);
+    const v = validateChallenge(parsed);
+    if (!v.valid) {
+      console.warn('[Nabbit] Groq reroll still invalid:', v.reason);
+      return null;
+    }
+    return parsed;
+  } catch (err) {
+    console.warn('[Nabbit] Groq reroll failed:', err instanceof Error ? err.message.slice(0, 160) : err);
+    return null;
+  }
+}
+
+export interface FallbackSuggestion {
+  challengeId: string;
+  concept: string;
+  videoId: string;
+  videoTitle: string;
+  stack: string;
+  difficulty: Challenge['difficulty'];
+}
+
+/**
+ * Contingency UX: when every provider fails, hand the client 3 drills from the
+ * curated library so the user has something to do while we fix the upstream.
+ * Picks by loose stack match on the user's topic hint / inferred video stack,
+ * preferring Beginner, falling back to any difficulty.
+ */
+function pickFallbackSuggestions(stackHint: string): FallbackSuggestion[] {
+  const hint = (stackHint || '').toLowerCase();
+  const videosById = new Map(CURATED_VIDEOS.map(v => [v.id, v]));
+  const scored = CURATED_CHALLENGES.map(c => {
+    const video = videosById.get(c.videoId);
+    const stack = (video?.stack || '').toLowerCase();
+    const concept = (c.concept || '').toLowerCase();
+    let score = 0;
+    if (hint) {
+      for (const word of hint.split(/\s+/).filter(w => w.length >= 3)) {
+        if (stack.includes(word)) score += 2;
+        if (concept.includes(word)) score += 1;
+      }
+    }
+    if (c.difficulty === 'Beginner') score += 0.5;
+    return { c, video, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, 3).map(({ c, video }) => ({
+    challengeId: c.id,
+    concept: c.concept,
+    videoId: c.videoId,
+    videoTitle: video?.title || 'Nabbit drill',
+    stack: video?.stack || 'Software Engineering',
+    difficulty: c.difficulty,
+  }));
+}
+
 export interface GenerateResult {
   status: number;
   json: Record<string, unknown>;
@@ -255,7 +434,6 @@ export async function generateFromUrl(body: unknown): Promise<GenerateResult> {
     }
 
     {
-      try {
         const ai = new GoogleGenAI({
           apiKey,
           httpOptions: {
@@ -330,41 +508,84 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
 - videoTimestampSeconds: The exact second in the tutorial where this concept is taught.
 - inspectionClue: A specific pointer directing the reviewer's attention to the problematic property or line.`;
 
-        const response = await withModelFallback(ai, startedAt, model => ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            // Output cap raised so 5+ drills (each ~1.5–2K tokens) fit in a single response;
-            // without this the model closed the array early at ~2 items. Lower temperature
-            // keeps planted bugs teachable (deterministic) rather than creative.
-            maxOutputTokens: 8192,
-            temperature: 0.4,
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                title: { type: Type.STRING },
-                channel: { type: Type.STRING },
-                stack: { type: Type.STRING },
-                duration: { type: Type.STRING },
-                description: { type: Type.STRING },
-                // minItems/maxItems hard-pin the count server-side so the model can't
-                // "close the array early" when it approaches the output cap.
-                challenges: {
-                  type: Type.ARRAY,
-                  minItems: 5,
-                  maxItems: 7,
-                  items: CHALLENGE_SCHEMA,
-                } as any,
-              },
-              required: ['title', 'channel', 'stack', 'duration', 'description', 'challenges'],
-            },
-          },
-        }));
+        // Provider chain: Gemini first (own retry + model-fallback budget), then
+        // Groq if GROQ_API_KEY is set, then an error that carries 3 curated-library
+        // suggestions so the user has something to do while we fix the upstream.
+        let parsedData: any = null;
+        let provider: 'gemini' | 'groq' = 'gemini';
+        let providerErrorDetail = '';
 
-        const dataText = response.text;
-        if (dataText) {
-          const parsedData = JSON.parse(dataText);
+        try {
+          const response = await withModelFallback(ai, startedAt, model => ai.models.generateContent({
+            model,
+            contents: prompt,
+            config: {
+              responseMimeType: 'application/json',
+              // Output cap raised so 5+ drills (each ~1.5–2K tokens) fit in a single response;
+              // without this the model closed the array early at ~2 items. Lower temperature
+              // keeps planted bugs teachable (deterministic) rather than creative.
+              maxOutputTokens: 8192,
+              temperature: 0.4,
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  channel: { type: Type.STRING },
+                  stack: { type: Type.STRING },
+                  duration: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  // minItems/maxItems hard-pin the count server-side so the model can't
+                  // "close the array early" when it approaches the output cap.
+                  challenges: {
+                    type: Type.ARRAY,
+                    minItems: 5,
+                    maxItems: 7,
+                    items: CHALLENGE_SCHEMA,
+                  } as any,
+                },
+                required: ['title', 'channel', 'stack', 'duration', 'description', 'challenges'],
+              },
+            },
+          }));
+          if (response.text) {
+            parsedData = JSON.parse(response.text);
+            provider = 'gemini';
+          }
+        } catch (geminiErr) {
+          providerErrorDetail = geminiErr instanceof Error ? geminiErr.message.slice(0, 300) : String(geminiErr).slice(0, 300);
+          console.warn(`[Nabbit] Gemini pack generation failed: ${providerErrorDetail}`);
+        }
+
+        if (!parsedData) {
+          if (GROQ_API_KEY) {
+            try {
+              console.log(`[Nabbit] Falling back to Groq (${GROQ_MODEL})`);
+              parsedData = await generateGroqPack(prompt);
+              provider = 'groq';
+              console.log(`[Nabbit] Groq ${GROQ_MODEL} succeeded`);
+            } catch (groqErr) {
+              const groqDetail = groqErr instanceof Error ? groqErr.message.slice(0, 300) : String(groqErr).slice(0, 300);
+              console.warn(`[Nabbit] Groq fallback failed: ${groqDetail}`);
+              providerErrorDetail = providerErrorDetail
+                ? `${providerErrorDetail} | groq: ${groqDetail}`
+                : `groq: ${groqDetail}`;
+            }
+          } else {
+            console.warn('[Nabbit] GROQ_API_KEY not set — no secondary provider to try');
+          }
+        }
+
+        if (!parsedData) {
+          const fallbackSuggestions = pickFallbackSuggestions(topicHint || oembedTitle || '');
+          return reply(502, {
+            error: "AI generation is temporarily unavailable. Try one of these drills in the meantime, or retry in a minute.",
+            code: 'ai_failed',
+            fallbackSuggestions,
+            ...(isProduction ? {} : { detail: providerErrorDetail || 'Both providers failed' }),
+          });
+        }
+
+        {
           const rawChallenges = Array.isArray(parsedData.challenges) ? parsedData.challenges : [];
           const validChallenges: any[] = [];
           const rerollTargets: Array<{ raw: any; reason: string }> = [];
@@ -378,35 +599,43 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
             }
           }
 
-          // One parallel reroll per invalid drill — each small, bounded call is far less
-          // likely to truncate than the single large one. Promise.allSettled so a single
-          // overloaded reroll doesn't drop the batch.
+          // One parallel reroll per invalid drill, routed to whichever provider served
+          // the main generation. Each small, bounded call is far less likely to truncate
+          // than the single large one. Promise.allSettled so a single overloaded reroll
+          // doesn't drop the batch.
           if (rerollTargets.length > 0) {
-            console.warn(`[Nabbit] ${rerollTargets.length}/${rawChallenges.length} drills invalid — rerolling in parallel`);
+            console.warn(`[Nabbit] ${rerollTargets.length}/${rawChallenges.length} drills invalid — rerolling in parallel via ${provider}`);
             const stackHint = parsedData.stack || 'Software Engineering';
             const title = oembedTitle || parsedData.title || '';
             const channel = oembedChannel || parsedData.channel || '';
             const rerolled = await Promise.allSettled(
-              rerollTargets.map(t => rerollSingleChallenge(ai, startedAt, {
-                title,
-                channel,
-                concept: t.raw?.concept || 'Core concept from the tutorial',
-                chapter: t.raw?.chapter || 'Chapter under review',
-                previousReason: t.reason,
-                stackHint,
-              })),
+              rerollTargets.map(t => {
+                const ctx = {
+                  title,
+                  channel,
+                  concept: t.raw?.concept || 'Core concept from the tutorial',
+                  chapter: t.raw?.chapter || 'Chapter under review',
+                  previousReason: t.reason,
+                  stackHint,
+                };
+                return provider === 'gemini'
+                  ? rerollSingleChallenge(ai, startedAt, ctx)
+                  : rerollSingleChallengeGroq(ctx);
+              }),
             );
             for (const r of rerolled) {
               if (r.status === 'fulfilled' && r.value) validChallenges.push(r.value);
             }
           }
 
-          console.log(`[Nabbit] Drill generation complete: ${validChallenges.length} valid of ${rawChallenges.length} initial (youtubeId=${youtubeId})`);
+          console.log(`[Nabbit] Drill generation complete: ${validChallenges.length} valid of ${rawChallenges.length} initial (provider=${provider}, youtubeId=${youtubeId})`);
 
           if (validChallenges.length === 0) {
+            const fallbackSuggestions = pickFallbackSuggestions(parsedData.stack || topicHint || oembedTitle || '');
             return reply(422, {
-              error: "Couldn't build reliable drills from this video. Try another video or add a topic hint.",
+              error: "Couldn't build reliable drills from this video. Try another video, or try one of these in the meantime.",
               code: 'no_valid_drills',
+              fallbackSuggestions,
             });
           }
           parsedData.challenges = validChallenges;
@@ -450,21 +679,9 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
             },
           }));
 
-          return reply(200, { video, challenges, source: 'gemini' });
+          return reply(200, { video, challenges, source: provider });
         }
-      } catch (geminiErr) {
-        console.error('[Nabbit] Gemini generation error:', geminiErr);
-        const detail = geminiErr instanceof Error ? geminiErr.message.slice(0, 300) : String(geminiErr).slice(0, 300);
-        return reply(502, {
-          error: "Couldn't generate drills for this video. Please try again, or try a different video.",
-          code: 'ai_failed',
-          // Provider detail only outside production, to make setup problems diagnosable.
-          ...(isProduction ? {} : { detail }),
-        });
-      }
     }
-
-    return reply(502, { error: "Couldn't generate drills for this video. Please try again.", code: 'ai_failed' });
   } catch (err: any) {
     console.error('[Nabbit] Failed to generate drill:', err);
     return reply(500, { error: 'Server issue. Please try again later.' });
