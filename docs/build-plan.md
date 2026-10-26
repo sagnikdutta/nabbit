@@ -10,8 +10,6 @@
 >
 > **Status (23 Oct):** **Phase 8 — Challenge Engine v2** planned (see section below). Full build, staged v1/v2/v3. Expands today's single-verb MCQ into a 4-pillar engine (more formats, confidence × speed × Elo × streaks, Daily Drill + distribution + shareable grid, Pro-gated hard modes). Pulls Phase 7 progress sync forward. Decisions locked: additive `Challenge` type + Gemini offline backfill; Supabase tables now; Pro = Boss drills + Seasons/ranked ladder + Impostor + Red herring.
 >
-> **Status (26 Oct):** **Phase 7.5 — Importer v2** opened (see section below). Hot fixes landed in [`api/_lib/generate-from-url.ts`](../api/_lib/generate-from-url.ts) — the "only 2 drills" truncation bug is fixed (maxOutputTokens + minItems/maxItems + pinned prompt count), invalid drills now get a single parallel reroll instead of being silently dropped, 404s now fall through to model discovery, and the model that actually served each call is logged. Deployed via `main`. The structural quality + reliability work (caching, two-pass pipeline, transcript grounding, multi-provider fallback) is pending and should land before Phase 8 v2 depends on reliable imports.
->
 > **Status (23 Oct, later):** **Phase 8 v1 shipped locally** (commits `982b463` v1a + `e131a6b` v1b + `827e85d` v1c + v1d finishing touches; unpushed). All ten v1 bullets done; browser-verified end-to-end on `react-state-batching` (Spot-fix, Locate-then-fix, Rank-fixes); **50 tests pass** (`npm test`); typecheck clean (`npm run lint`). Every curated drill now plays all three v1 formats — `rankedFixes` placeholders authored via `npm run backfill -- --defaults --with-rankings` (quality upgrade: `--gemini`). Passive weekly streak freeze shipped (`src/lib/streak-freeze.ts`), consumed in `recordAttempt`, surfaced silently by `computeStats`. **v2 and v3 remain** — backend go-live (migrations `0004`–`0008`, SupabaseStore, Daily Drill, per-concept Elo, Blind-fix) then Pro + narrative (Diff-review, Impostor, Red-herring, prod-incident skin, Boss drills, Seasons, community drafts).
 >
 > **Status (24 Oct):** **Phase 8 v2 shipped locally** across commits `f2835e9` (v2a — migrations 0004–0008 + RPCs) · `d5537ec` (v2b — SupabaseStore + routing + merge flow) · `65a454f` (v2c — Daily Drill card, mastery list, Elo delta chip on Reveal, ShareGrid Elo row) · `9f41823` (v2d — BlindFixPanel + Levenshtein, Pro-gated Boss drill card + Seasons leaderboard) · v2e (Edge Function + Gemini pass #2 + build-plan). Browser-verified end-to-end against the live nabbit Supabase project: `apply_attempt` returned `newRating: 1223` / `eloDelta: +11` / `globalStreak: 3`; data landed in `attempts`, `concept_elo`, `streaks`, `recall_items`; Reveal shows Rating chip + ShareGrid Elo row; Boss + Leaderboard surfaces render the lock badge for the current non-Pro `tester@example.com`; Blind-fix on `effect-missing-cleanup` scored `+353`. **64 tests pass**. Pulled v3's Boss-drill and Seasons UI shells forward (the gate itself is what proves the Pro surface). **v3 remains** — Diff-review, Impostor + Red-herring (Pro), prod-incident skin, community drafts (migration 0009 + queue + auto-publish), Gemini pass #3 (human-reviewed Impostor/Red-herring content).
@@ -23,6 +21,8 @@
 > **Status (24 Oct, UI debt):** The signed-in dashboard order on `LibraryScreen` is wrong after Phase 8 v2/v3. Boss drill card, Season leaderboard tile and Community drafts tile sit *above* "Welcome back, user" and read as an afterthought — tall, text-only rows. "Import from YouTube" shrank to a sub-button in the same area and is almost invisible. A dashboard **UI redesign** is the next thing to do before any more feature work — logged as **B9** below.
 >
 > **Status (24 Oct, V2 scaffold):** A full visual overhaul from a new mockup is in flight; subsumes B9. V2 scaffold shipped locally (not yet pushed): `src/v2/Dashboard.tsx` + `src/v2/dashboard.css` + `src/v2/thumbnails.ts` (one-page React port of the attached mockup, own CSS-variable token set, light + dark), `src/AppRouter.tsx` (path routing: `/v2` → V2, `/v1/*` and `/v2/<anything>` → V1), `server.ts` middleware doing a cached Supabase lookup for the `/` redirect, migration `0011_ui_versions.sql` (`version` + `default`, RLS off, seeded with `v1=true, v2=false`). Live Supabase currently has `default=true` on `v2` for preview; fallbacks on both the server and client flipped to V1 so a lookup failure never traps a user in a half-built V2. Plan to migrate every page logged as **B10** below.
+>
+> **Status (26 Oct):** **Importer v2** opened — hot fixes landed in [`api/_lib/generate-from-url.ts`](../api/_lib/generate-from-url.ts) and pushed to `main` (commit `3d82810`). Fixes the "only 2 drills" truncation (`maxOutputTokens: 8192` + `minItems: 5, maxItems: 7` + pinned prompt count), replaces the silent-drop filter with a parallel reroll on invalid drills (echoing the specific failure reason back into the retry prompt), and widens `isTransient` so a stale `GEMINI_MODEL` falls through to `discoverFallbackModels()` instead of hard-erroring. Model-success logging + per-request valid-count log added. The structural quality + reliability work (cache, two-pass pipeline, transcript grounding, multi-provider fallback, golden few-shot, bug taxonomy, self-critique) is **pending** — see "Importer v2" section below. This is the foundation B8 (auto-gen from any video) will build on.
 >
 > **Status (25 Oct, V2 built — flip pending):** **V2-A and V2-B are done locally** (7 unpushed commits on `main`, latest `95c3163`). Every V2 nav item now has a real route: Dashboard (real data + Daily Drill / Boss / Season cards, Mastery panel, Community tile), Auth (email + Google/GitHub OAuth), Challenge (all seven formats, session combo, `?boss=1`), Recall (+ Mastery), Leaderboard, Community, Import Video, My Library, Progress; Achievements and Settings are explicit "coming soon" pages. Shared kit in `src/v2/components/primitives.tsx` (`V2Button/Chip/Progress/Panel/Card/Toast/Modal`). Typecheck clean; signed-out paths browser-verified. **Not yet verified:** signed-in + Pro paths (needs your account with `is_pro`). OAuth is wired but **hidden** (`OAUTH_ENABLED = false` in `Auth.tsx`) until the providers are enabled in Supabase. **V1 sunset date: 27 Oct 2026.** **V2-C is prepared, not run** — see `docs/v2-flip.md` (staging checklist, flip SQL + rollback, sunset plan, V1 deletion inventory).
 >
@@ -94,6 +94,63 @@ Scaffold · core loop · persistence + recall · library + nav · content (React
 - **Review reminders (client slice)** — opt-in browser notification when concepts are due on open. *(Scheduled email/push = Phase 7 / backend.)*
 - **Token hygiene** — `--code-border` token added; confetti reads tokens at runtime; no raw hex/rgba in components or screens.
 - **Phase 6 polish** — responsive (no overflow at 375px), accessibility pass, loading/error states, demo-reset. *(Deploy + recording remain — see Phase 6.)*
+
+---
+
+## Importer v2 — IN FLIGHT (26 Oct)
+
+> Hot fixes shipped to prod on `main` (commit `3d82810`). Structural quality + reliability work pending. The importer is the only Gemini-touching path in the running app (built-in drills + grading are deterministic; the offline `scripts/backfill-challenge-fields.ts` uses `gemini-2.5-flash` and is unaffected). This phase is the foundation **B8 — auto-generate from any video** will build on.
+
+### Context — the three problems reported (23 Oct → 26 Oct)
+1. **"Only 2-question drills."** Diagnosed as output truncation: a single `generateContent` was packing the whole pack (video meta + N challenges, ~1.5–2K tokens each) into one response with no `maxOutputTokens`; the model honoured `responseSchema` by closing the `challenges` array early at ~2 items when it approached the default cap. The prompt also never pinned the count, and the post-parse filter silently dropped drills that failed validation (e.g. hallucinated `buggyLines` outside the actual line count), compounding the problem.
+2. **"API is busy."** Partly real rate-limiting on `gemini-3.8-flash` (newer models have tighter per-key quotas), partly a fallback that never fired because 404/NOT_FOUND wasn't in the transient-error regex at [`generate-from-url.ts`](../api/_lib/generate-from-url.ts) — so any model-name drift hard-errored instead of falling through to `discoverFallbackModels()`.
+3. **"Not supreme enough."** Prompt is grounded only on oEmbed title + channel (plus the optional Google Search blurb when `GEMINI_SEARCH_GROUNDING=1`). No transcript, no chapters, no screenshots. The model is hallucinating the "concept at timestamp" entirely → generic planted bugs. No golden few-shot, no bug taxonomy, no self-critique pass.
+
+### Done ✅ (26 Oct — commit `3d82810`, pushed to `main`)
+All in [`api/_lib/generate-from-url.ts`](../api/_lib/generate-from-url.ts); typecheck clean; auto-deployed on Vercel.
+
+- **`maxOutputTokens: 8192` + `temperature: 0.4`** on the main `generateContent`. Output cap raised so 5+ drills (~1.5–2K tokens each) fit in one response; lower temperature keeps planted bugs teachable (deterministic) rather than creative.
+- **Prompt pins the count** — *"Generate EXACTLY 5 bug-hunt drills (6 or 7 only if the video clearly covers that many distinct, teachable concepts)."* The "return an empty array if you can't determine" escape clause is preserved.
+- **`minItems: 5, maxItems: 7` on `responseSchema.challenges`** — hard-pins the count server-side so the model can't close the array early.
+- **Hoisted `CHALLENGE_SCHEMA` constant** — single source of truth, reused by the main call and the reroll path.
+- **`validateChallenge(c)`** — pulls the inline filter into a named function that returns a specific failure reason (`buggyLines must be within [1, N]`, `correctOption must be in [0, 3]`, etc.) so a reroll can echo it back into the next prompt.
+- **`rerollSingleChallenge(ai, startedAt, ctx)`** — regenerates a single invalid drill with the specific failure reason in the prompt, `maxOutputTokens: 2048`, the same `CHALLENGE_SCHEMA`, through `withModelFallback` so it also benefits from retry + fallback discovery.
+- **Parallel reroll via `Promise.allSettled`** — one reroll per invalid drill, bounded by `RETRY_DEADLINE_MS` (42 s). A single overloaded reroll never drops the whole batch.
+- **`isTransient` catches 404/NOT_FOUND** — a stale `GEMINI_MODEL` or a model that drifted off GA now falls through to `discoverFallbackModels()` instead of hard-erroring the import.
+- **Model-success logging** — `Gemini <model> succeeded on retry N` and `Gemini <model> succeeded (used as fallback for <primary>)` so you can see from Vercel logs when the primary flaked and which model actually served each successful call.
+- **Per-request count log** — `Drill generation complete: X valid of Y initial (youtubeId=…)` on every successful request. Also warns `N/M drills invalid — rerolling in parallel` when the first pass had bad drills.
+
+**Acceptance (manual, on the live site):** import a known video → the Vercel function log should show `X ≥ 5 valid of Y initial`. If `X` is still 2 for most imports after this, the model is actively ignoring `minItems` and the next move is Pass #3 below (two-pass pipeline), not more prompt tweaks.
+
+### Pending ⬜ — ranked by impact per hour of work
+
+**Pass 1 — Reliability (reduces "API is busy" to near-zero)**
+
+1. **Cache generated packs in Supabase.**
+   - New table `generated_packs(youtube_id text primary key, pack jsonb not null, created_at timestamptz default now(), source text, upvotes int default 0, downvotes int default 0)` with RLS: `select` for everyone, `insert`/`update` via a `security definer` RPC `upsert_generated_pack(youtube_id, pack)` so clients can't forge packs.
+   - `generateFromUrl` short-circuits on cache hit (no Gemini call at all). Cache-miss path writes the pack to the table on success.
+   - UI gets a thumbs-up/down on the pack reveal; a vote delta threshold flags the pack for re-generation (sets `pack = null` so the next import re-runs Gemini).
+   - **Impact:** second import of the same video = instant, zero quota cost. Also lets you pre-warm.
+2. **Pre-generation script for popular videos.** `scripts/pregenerate-popular.ts` iterates a curated list of ~50 well-known tutorial URLs and calls `generateFromUrl` offline, filling the cache overnight. Demos never cold-start.
+3. **Two-pass pipeline: chapters → parallel per-drill calls.** Pass 1: one small call → `{chapters: [{concept, chapterTitle, timestampSeconds}]}` (~400 output tokens, ~never truncates). Pass 2: `Promise.allSettled` over N parallel calls, one drill per chapter, each with `maxOutputTokens: 2048`. End-to-end latency drops to the slowest single call (not the sum); partial success is now the default rather than catastrophe. **This is the right follow-up if the one-call fix still sees occasional truncation after 26 Oct.**
+4. **Multi-provider fallback chain.** Gemini Flash → Groq (free Llama 3.3 70B — absurdly fast) → Claude Haiku → `no_valid_drills` error. Shared JSON shape so each provider is a drop-in. Groq alone would make imports feel instant most of the time when Gemini is overloaded.
+5. **Async import queue.** Return a `request_id` immediately; generate in a Vercel background function (or Supabase Edge); UI subscribes to Realtime for the result and the Library pack lights up when it lands. No more 40-second spinner.
+
+**Pass 2 — Quality (makes drills feel grounded instead of hallucinated)**
+
+6. **Transcript grounding.** Fetch the YouTube transcript (via the `youtube-transcript` npm package or hitting `timedtext` directly) and the chapter list (video description). Pass the ±90 s transcript window around each `timestampSeconds` into the per-drill prompt. Bugs stop being generic because the model can reference actual code or terminology from the tutorial. Pairs with #3 (two-pass pipeline) — one transcript fetch, N per-drill calls each with their own window.
+7. **Golden few-shot library.** Hand-curate 2–3 exemplar drills per `stack` (React, AWS, Docker, SQL, …) in `scripts/few-shot/*.json`. Inject the relevant stack's examples into the prompt. Biggest quality win per prompt-token spent.
+8. **Bug taxonomy per stack.** `src/content/bug-patterns.ts` — a maintained list of teachable patterns per stack (stale closure, missing dep array, race condition, off-by-one, SG open to 0.0.0.0/0, wildcard IAM, N+1 query, …). Prompt says *"pick 1 pattern from the list; do not invent."* Keeps bugs sharp and prevents the laziest "swap `===` for `==`" drill.
+9. **Self-critique rubric pass.** After generation, a second small Gemini call grades its own drill on a rubric (bug subtlety 1–5, option plausibility 1–5, line accuracy pass/fail, teachability 1–5) and re-rolls below threshold. On a cached pack (#1) you pay this cost once per video forever.
+
+### Dependencies / sequencing
+- **For B8 (auto-gen from any video, premium hook):** this phase *is* B8's foundation. The paste-URL path in the Library already exists today for every signed-in user (per the B7 note). Full B8 → Pro gating should be deferred until pack quality consistently clears #9 (self-critique rubric) at ≥ 4/5 on the subtlety axis.
+- **For Phase 8 extensions:** Daily Drill and per-concept Elo already scale with pack size, and the pack size grows via imports. Shipping #1 (cache) and #4 (provider fallback) sooner widens the usable pack base for everyone.
+
+### Risks & mitigations
+- **Cache poisoning via bad packs.** Mitigation: the vote delta in #1 flags for re-generation; a cache row with `downvotes - upvotes ≥ 3` is treated as a miss. Also a `source` column records which provider wrote the row so a provider-specific regression can be invalidated en masse.
+- **Transcript availability.** Many YouTube videos auto-generate English transcripts; a notable fraction don't. Mitigation: #6 falls back to the current oEmbed-title path when transcript fetch returns empty, so pack generation is never *blocked* on transcripts, just *better* when they exist.
+- **Multi-provider cost drift.** Mitigation: provider fallback (#4) is strictly ordered (Gemini → Groq → Claude), not raced. Each attempt has its own `maxOutputTokens`. The daily Claude Haiku bill is bounded by how often the two upstream providers both fail — rare.
 
 ---
 
@@ -714,7 +771,7 @@ Each pass writes back to `src/content/data.ts` via a code-mod (ts-morph). Valida
 
 ## Roadmap (post-buildathon)
 
-~~PR-review format~~ (shipped as v3b DiffReviewPanel) → more judgment formats (predict-output, tradeoff, drag-drop flow) → auto-gen (B8) → more stacks/domains (B6) → ~~accounts + Supabase~~ (identity done) → ~~real cross-device progress sync~~ (shipped in v2b SupabaseStore) → ~~Phase 8 v2/v3 (challenge-engine addictive mechanics)~~ (**done** — commits `f2835e9` through `ea2d1ef`) → **B9 dashboard UI redesign (next)** → multi-drill Boss flow + `close_season` cron (v3 polish follow-ups) → published community drafts merging into `getChallenges()` → B2B team dashboards → mastery map + XP (now partially covered by per-concept Elo).
+~~PR-review format~~ (shipped as v3b DiffReviewPanel) → more judgment formats (predict-output, tradeoff, drag-drop flow) → **Importer v2 pending passes (cache + pre-generation + two-pass pipeline + multi-provider fallback + async queue + transcript grounding + few-shot + bug taxonomy + self-critique)** → auto-gen (B8, built on Importer v2) → more stacks/domains (B6) → ~~accounts + Supabase~~ (identity done) → ~~real cross-device progress sync~~ (shipped in v2b SupabaseStore) → ~~Phase 8 v2/v3 (challenge-engine addictive mechanics)~~ (**done** — commits `f2835e9` through `ea2d1ef`) → **B9 dashboard UI redesign (next)** → multi-drill Boss flow + `close_season` cron (v3 polish follow-ups) → published community drafts merging into `getChallenges()` → B2B team dashboards → mastery map + XP (now partially covered by per-concept Elo).
 
 ---
 
