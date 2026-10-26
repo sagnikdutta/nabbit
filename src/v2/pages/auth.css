@@ -231,10 +231,26 @@
 .v2-auth-card-switch button:hover { text-decoration: underline; }
 
 .v2-auth-oauth-hint {
-  margin: -12px 0 20px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 12px;
+  margin: -10px 0 20px;
+  padding: 10px 14px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-left: 3px solid #f59e0b;
+  border-radius: 8px;
+  color: var(--text, #1a1f36);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+}
+.v2-auth-oauth-hint::before {
+  content: "⚠";
+  font-size: 16px;
+  color: #f59e0b;
+  flex-shrink: 0;
 }
 
 .v2-auth-oauth {
