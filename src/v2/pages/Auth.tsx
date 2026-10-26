@@ -38,9 +38,10 @@ import { UserAccount } from '../../lib/types';
 type Mode = 'signin' | 'signup';
 type Theme = 'light' | 'dark';
 
-// Social sign-in is wired (api.signInWithOAuth) but hidden until the Google and
-// GitHub providers are enabled in Supabase. Flip to true to show the buttons.
-const OAUTH_ENABLED = false;
+// Social sign-in is wired (api.signInWithOAuth) and the Google provider is
+// enabled in Supabase (27 Oct) — buttons are live. GitHub still hidden by
+// per-button checks until that provider is configured too.
+const OAUTH_ENABLED = true;
 
 const COUNTRY_CODES = [
   { code: '+1', flag: '\uD83C\uDDFA\uD83C\uDDF8' },
