@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from '@google/genai';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { extractYouTubeVideoId } from '../../src/lib/youtube.js';
 import type { Challenge, Video } from '../../src/lib/types.js';
 import { CURATED_CHALLENGES, CURATED_VIDEOS } from '../../src/content/data.js';
@@ -37,6 +38,20 @@ const SEARCH_GROUNDING = /^(1|true|on)$/i.test(process.env.GEMINI_SEARCH_GROUNDI
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
+
+// Supabase cache for generated packs — Importer v2 Pass #1. When a cached pack
+// exists for a youtubeId, the import short-circuits with zero AI calls. Writes
+// go through the upsert_generated_pack RPC (security definer in 0012) so a
+// stolen anon key can't poison the cache from the client. If Supabase env isn't
+// set, caching is a no-op and the import falls through to the full provider chain.
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseCache: SupabaseClient | null =
+  SUPABASE_URL && SUPABASE_ANON_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } })
+    : null;
+const CACHE_READ_TIMEOUT_MS = 3_000;
+const CACHE_WRITE_TIMEOUT_MS = 5_000;
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -395,6 +410,81 @@ function pickFallbackSuggestions(stackHint: string): FallbackSuggestion[] {
   }));
 }
 
+/**
+ * Try to serve this import from the Supabase pack cache. Returns the cached
+ * pack body + its original source provider on hit; null on miss, missing
+ * config, or any transport error (cache failures must never block a live
+ * import). Bounded by CACHE_READ_TIMEOUT_MS so a slow Supabase round-trip
+ * can't eat into the Gemini budget.
+ */
+async function getCachedPack(youtubeId: string): Promise<{ pack: { video: Video; challenges: Challenge[] }; source: string } | null> {
+  if (!supabaseCache) return null;
+  try {
+    const query = supabaseCache
+      .from('generated_packs')
+      .select('pack, source')
+      .eq('youtube_id', youtubeId)
+      .maybeSingle();
+    const { data, error } = await withTimeout(
+      Promise.resolve(query) as unknown as Promise<{ data: { pack: any; source: string | null } | null; error: any }>,
+      CACHE_READ_TIMEOUT_MS,
+      'supabase cache read',
+    );
+    if (error || !data?.pack) return null;
+    const pack = data.pack;
+    if (!pack?.video || !Array.isArray(pack?.challenges) || pack.challenges.length === 0) return null;
+    return { pack, source: data.source || 'cache' };
+  } catch (err) {
+    console.warn('[Nabbit] cache read failed:', err instanceof Error ? err.message.slice(0, 160) : err);
+    return null;
+  }
+}
+
+/**
+ * Write-through to the Supabase pack cache. Fire via await (so Vercel doesn't
+ * kill the function before Postgres acknowledges) but bounded by
+ * CACHE_WRITE_TIMEOUT_MS, and never throw: a failed cache write must not fail
+ * the user's import — the live pack is what matters.
+ */
+async function setCachedPack(youtubeId: string, pack: { video: Video; challenges: Challenge[] }, source: string): Promise<void> {
+  if (!supabaseCache) return;
+  try {
+    const call = supabaseCache.rpc('upsert_generated_pack', {
+      p_youtube_id: youtubeId,
+      p_pack: pack as any,
+      p_source: source,
+    });
+    const { error } = await withTimeout(
+      Promise.resolve(call) as unknown as Promise<{ error: any }>,
+      CACHE_WRITE_TIMEOUT_MS,
+      'supabase cache write',
+    );
+    if (error) {
+      console.warn('[Nabbit] cache write rpc error:', error.message || error);
+    } else {
+      console.log(`[Nabbit] cached pack for youtubeId=${youtubeId} (source=${source})`);
+    }
+  } catch (err) {
+    console.warn('[Nabbit] cache write failed:', err instanceof Error ? err.message.slice(0, 160) : err);
+  }
+}
+
+/**
+ * The cached pack has frozen custom-* ids from whenever it was first generated.
+ * Clone with fresh ids so each client's local store sees its own entry (and
+ * dedupes correctly against anything they already have).
+ */
+function rehydrateCachedPack(cached: { video: Video; challenges: Challenge[] }, youtubeId: string): { video: Video; challenges: Challenge[] } {
+  const customId = `custom-${youtubeId}-${Date.now().toString(36)}`;
+  const video: Video = { ...cached.video, id: customId, youtubeId };
+  const challenges: Challenge[] = cached.challenges.map((c, i) => ({
+    ...c,
+    id: `${customId}-c${i + 1}`,
+    videoId: customId,
+  }));
+  return { video, challenges };
+}
+
 export interface GenerateResult {
   status: number;
   json: Record<string, unknown>;
@@ -421,6 +511,22 @@ export async function generateFromUrl(body: unknown): Promise<GenerateResult> {
     }
 
     const youtubeId = parsed.videoId;
+
+    // Cache short-circuit (Importer v2 Pass #1): if we've already built a pack
+    // for this youtubeId, serve it instantly with zero AI calls. Fresh ids on
+    // the way out so each client's local store dedupes cleanly.
+    const cached = await getCachedPack(youtubeId);
+    if (cached) {
+      const rehydrated = rehydrateCachedPack(cached.pack, youtubeId);
+      console.log(`[Nabbit] cache HIT for youtubeId=${youtubeId} (original source=${cached.source}, ${rehydrated.challenges.length} drills)`);
+      return reply(200, {
+        video: rehydrated.video,
+        challenges: rehydrated.challenges,
+        source: 'cache',
+        cachedFrom: cached.source,
+      });
+    }
+
     const apiKey = process.env.GEMINI_API_KEY;
 
     // No silent template fallback: a canned pack labelled as this video is
@@ -678,6 +784,11 @@ Each challenge must feature realistic code with EXACTLY ONE subtle planted flaw 
               inspectionClue: `Inspect line ${c.buggyLines?.[0] || 5} carefully.`,
             },
           }));
+
+          // Write-through to the cache before replying so subsequent imports
+          // of this youtubeId short-circuit at the top of this function.
+          // Awaited (so Vercel doesn't kill us pre-ack) but bounded + fail-silent.
+          await setCachedPack(youtubeId, { video, challenges }, provider);
 
           return reply(200, { video, challenges, source: provider });
         }
