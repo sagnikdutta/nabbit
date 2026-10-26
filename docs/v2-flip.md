@@ -26,6 +26,8 @@ is deleted (step 5 removes it).
 - [x] OAuth deferred: the Google/GitHub buttons are hidden (`OAUTH_ENABLED = false`
       in `src/v2/pages/Auth.tsx`). To enable later: turn on both providers in
       Supabase Auth, add `<origin>/v2/` to the redirect allow-list, set the flag to `true`.
+- [ ] Vercel env: `GEMINI_API_KEY` set (billing enabled on the Google project recommended — free-tier
+      quota/503s break imports) and one real video import confirmed on the deployed site.
 - [ ] Signed-in and Pro checklist from the parity-cards work passed (Daily Drill,
       Boss launch, Season banner, Mastery, Community tile, combo chaining).
 - [ ] 6 local commits pushed and deployed to staging.
