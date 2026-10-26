@@ -40,7 +40,9 @@ interface NavLink {
 
 const NAV_LINKS: NavLink[] = [
   { key: 'Home',          icon: '⌂', href: '/v2/' },
-  { key: 'Import Video',  icon: '▣', href: '/v2/import' },
+  // 'Import Video' deliberately omitted — importing lives inside Home (dashboard hero)
+  // and doesn't need a dedicated sidebar slot. The /v2/import page still works by URL
+  // and still highlights the (now-unused) 'Import Video' key for its own activeNav prop.
   { key: 'My Library',    icon: '▤', href: '/v2/library' },
   { key: 'Practice',      icon: '♧', href: '/v2/challenge/react-state-batching' },
   { key: 'Recall',        icon: '◴', href: '/v2/recall' },
