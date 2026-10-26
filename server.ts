@@ -390,7 +390,12 @@ async function startServer() {
 
   // Generate bug-hunt challenges from pasted YouTube tutorial URL using Gemini AI
   app.post('/api/videos/generate-from-url', async (req: Request, res: Response) => {
-    const { status, json } = await generateFromUrl(req.body);
+    // Extract the originating client IP for per-IP rate limiting. Behind a
+    // proxy / Vercel edge, x-forwarded-for is a comma-separated list where
+    // the first entry is the real client; fall back to req.ip for local dev.
+    const xff = (req.headers['x-forwarded-for'] as string | undefined) || '';
+    const clientIp = (xff.split(',')[0] || req.ip || '').trim();
+    const { status, json } = await generateFromUrl(req.body, { clientIp });
     res.status(status).json(json);
   });
 
