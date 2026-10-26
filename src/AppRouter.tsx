@@ -124,13 +124,20 @@ export default function AppRouter() {
     window.location.replace(`/v2/auth?next=${encodeURIComponent(next)}`);
   }, [blocked]);
 
+  // Loading / in-flight states deliberately render NOTHING instead of raw
+  // "Loading V2…" / "Picking dashboard version…" text. Those placeholders
+  // show for a fraction of a second during redirects and React.lazy chunk
+  // fetches, but when they do show they look like a broken debug build.
+  // A blank page for ~100ms is strictly nicer than system-ui text in the
+  // top-left corner.
+
   if (blocked) {
-    return <div style={{ padding: 24, fontFamily: 'system-ui', color: '#667293' }}>Redirecting to sign in…</div>;
+    return null;
   }
 
   if (choice.kind === 'v2-dashboard') {
     return (
-      <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading V2…</div>}>
+      <Suspense fallback={null}>
         <V2Dashboard />
       </Suspense>
     );
@@ -138,7 +145,7 @@ export default function AppRouter() {
 
   if (choice.kind === 'v2-auth') {
     return (
-      <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading V2 auth…</div>}>
+      <Suspense fallback={null}>
         <V2Auth initialMode={new URLSearchParams(window.location.search).get('mode') === 'signup' ? 'signup' : 'signin'} />
       </Suspense>
     );
@@ -146,7 +153,7 @@ export default function AppRouter() {
 
   if (choice.kind === 'v2-challenge') {
     return (
-      <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading drill…</div>}>
+      <Suspense fallback={null}>
         <V2Challenge />
       </Suspense>
     );
@@ -154,7 +161,7 @@ export default function AppRouter() {
 
   if (choice.kind === 'v2-recall') {
     return (
-      <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading recall…</div>}>
+      <Suspense fallback={null}>
         <V2Recall />
       </Suspense>
     );
@@ -162,7 +169,7 @@ export default function AppRouter() {
 
   if (choice.kind === 'v2-leaderboard') {
     return (
-      <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading leaderboard…</div>}>
+      <Suspense fallback={null}>
         <V2Leaderboard />
       </Suspense>
     );
@@ -170,7 +177,7 @@ export default function AppRouter() {
 
   if (choice.kind === 'v2-community') {
     return (
-      <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading community…</div>}>
+      <Suspense fallback={null}>
         <V2Community />
       </Suspense>
     );
@@ -178,7 +185,7 @@ export default function AppRouter() {
 
   if (choice.kind === 'v2-import' || choice.kind === 'v2-library' || choice.kind === 'v2-progress' || choice.kind === 'v2-soon') {
     return (
-      <Suspense fallback={<div style={{ padding: 24, fontFamily: 'system-ui' }}>Loading…</div>}>
+      <Suspense fallback={null}>
         {choice.kind === 'v2-import' && <V2Import />}
         {choice.kind === 'v2-library' && <V2Library />}
         {choice.kind === 'v2-progress' && <V2Progress />}
@@ -191,9 +198,7 @@ export default function AppRouter() {
     return <App />;
   }
 
-  return (
-    <div style={{ padding: 24, fontFamily: 'system-ui', color: '#667293' }}>
-      Picking dashboard version…
-    </div>
-  );
+  // Resolving default version from Supabase — render nothing; the useEffect
+  // above does the window.location.replace once the lookup lands.
+  return null;
 }
