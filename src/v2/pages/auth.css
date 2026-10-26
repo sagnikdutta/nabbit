@@ -230,6 +230,13 @@
 .v2-auth-card-switch a:hover,
 .v2-auth-card-switch button:hover { text-decoration: underline; }
 
+.v2-auth-oauth-hint {
+  margin: -12px 0 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .v2-auth-oauth {
   display: grid;
   gap: 10px;

@@ -348,6 +348,7 @@ export default function V2AuthPage({
                   </button>
                 )}
               </div>
+              <p className="v2-auth-oauth-hint">We'll sign you in or create an account for you.</p>
 
               <div className="v2-auth-divider" role="separator">
                 <span>or</span>
